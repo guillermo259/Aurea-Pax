@@ -1,9 +1,66 @@
 import React from 'react';
-import { ArrowUpCircle, Flame, X } from 'lucide-react';
-import { ALERT_HINTS, ALERT_LABELS, BUILDINGS, RESOURCE_META } from '../game/catalog';
+import {
+  AmphoraIcon,
+  ArrowUp02Icon,
+  Bread01Icon,
+  Cancel01Icon,
+  CheckmarkCircle02Icon,
+  ChurchIcon,
+  Clock01Icon,
+  CloudFogIcon,
+  Coins01Icon,
+  DrinkIcon,
+  FireIcon,
+  Hammer01Icon,
+  Layers01Icon,
+  Road01Icon,
+  SproutIcon,
+  Store01Icon,
+  SunCloud01Icon,
+  UserGroupIcon,
+  WaterPumpIcon,
+} from '@hugeicons/core-free-icons';
+import {
+  ALERT_HINTS,
+  ALERT_LABELS,
+  BUILDINGS,
+  RESOURCE_META,
+  WHEAT_HARVESTS_PER_SOWING,
+  WHEAT_SOW_COST,
+} from '../game/catalog';
 import { EXTINGUISH_COST, UPGRADE_CIVES_COST } from '../game/simulation';
 import { Cart, HudSnapshot, PlacedBuilding, ResourceId } from '../game/types';
+import { HugeIcon, type IconData } from './HugeIcon';
 import { BuildingIcon, ResourceIcon } from './RomanIcons';
+
+const StatRow: React.FC<{
+  icon: IconData;
+  label: string;
+  value: React.ReactNode;
+  valueClassName?: string;
+}> = ({ icon, label, value, valueClassName = '' }) => (
+  <div className="flex items-center justify-between gap-2" title={label}>
+    <span className="flex items-center gap-1.5 text-[#b9aa94]">
+      <HugeIcon icon={icon} size={15} aria-hidden="true" />
+      <span className="sr-only">{label}</span>
+    </span>
+    <span className={`font-mono-num ${valueClassName}`}>{value}</span>
+  </div>
+);
+
+const ResourceStatRow: React.FC<{
+  resource: ResourceId;
+  label: string;
+  value: React.ReactNode;
+}> = ({ resource, label, value }) => (
+  <div className="flex items-center justify-between gap-2" title={label}>
+    <span className="flex items-center gap-1.5 text-[#b9aa94]">
+      <ResourceIcon resource={resource} className="w-3.5 h-3.5" />
+      <span className="sr-only">{label}</span>
+    </span>
+    <span className="font-mono-num">{value}</span>
+  </div>
+);
 
 interface InspectorPanelProps {
   hud: HudSnapshot;
@@ -13,6 +70,7 @@ interface InspectorPanelProps {
   onClose: () => void;
   onUpgradeBuilding: (id: number) => void;
   onExtinguishFire: (id: number) => void;
+  onSowWheat: (id: number) => void;
   onDemolishBuilding: (b: PlacedBuilding) => void;
 }
 
@@ -24,6 +82,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   onClose,
   onUpgradeBuilding,
   onExtinguishFire,
+  onSowWheat,
   onDemolishBuilding,
 }) => {
   if (!building && !cart) return null;
@@ -32,7 +91,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
     const origin = allBuildings.find((b) => b.id === cart.ownerBuildingId);
     const target = allBuildings.find((b) => b.id === cart.targetBuildingId);
     return (
-      <aside className="fixed right-3 top-20 z-20 w-72 rounded-lg bg-[#191511]/95 border border-[#b78e4a]/45 shadow-2xl p-4 text-sm text-[#f4ede0]">
+      <aside className="fixed right-3 top-28 z-20 w-72 rounded-lg bg-[#191511]/95 border border-[#b78e4a]/45 shadow-2xl p-4 text-sm text-[#f4ede0]">
         <div className="flex items-start justify-between gap-2 pb-3 mb-3 border-b border-[#b78e4a]/25">
           <div>
             <h3 className="font-display text-base font-bold text-[#f4ca64]">
@@ -48,7 +107,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             onClick={onClose}
             className="p-1 text-[#b9aa94] hover:text-white cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <HugeIcon icon={Cancel01Icon} size={16} aria-hidden="true" />
           </button>
         </div>
 
@@ -83,8 +142,21 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
     hud.stock.wood >= UPGRADE_CIVES_COST.wood &&
     hud.stock.stone >= UPGRADE_CIVES_COST.stone;
 
+  const housingNeeds: Array<{ icon: IconData; label: string; short: string; ok: boolean }> = [
+    { icon: WaterPumpIcon, label: 'Agua (Fuente)', short: 'Agua', ok: building.hasWater },
+    { icon: Store01Icon, label: 'Mercado', short: 'Mercado', ok: building.hasMarket },
+    { icon: Bread01Icon, label: 'Pan', short: 'Pan', ok: building.hasBread },
+    ...(building.type === 'house_cives'
+      ? [
+          { icon: DrinkIcon, label: 'Vino', short: 'Vino', ok: building.hasWine },
+          { icon: AmphoraIcon, label: 'Cerámica', short: 'Cerámica', ok: building.hasPottery },
+          { icon: ChurchIcon, label: 'Templo / Foro', short: 'Templo', ok: building.hasTemple },
+        ]
+      : []),
+  ];
+
   return (
-    <aside className="fixed right-3 top-20 z-20 w-80 rounded-lg bg-[#191511]/95 border border-[#b78e4a]/45 shadow-2xl p-4 text-sm text-[#f4ede0]">
+    <aside className="fixed right-3 top-28 z-20 w-80 rounded-lg bg-[#191511]/95 border border-[#b78e4a]/45 shadow-2xl p-4 text-sm text-[#f4ede0]">
       <div className="flex items-start justify-between gap-2 pb-3 mb-3 border-b border-[#b78e4a]/25">
         <div className="flex items-center gap-2.5">
           <BuildingIcon type={building.type} className="w-8 h-8 shrink-0" />
@@ -101,73 +173,72 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           onClick={onClose}
           className="p-1 text-[#b9aa94] hover:text-white cursor-pointer"
         >
-          <X className="w-4 h-4" />
+          <HugeIcon icon={Cancel01Icon} size={16} aria-hidden="true" />
         </button>
       </div>
 
       <p className="text-xs text-[#d6c9b4] leading-relaxed mb-3">{def.description}</p>
 
       <div className="space-y-2 text-xs">
-        <div className="flex items-center justify-between">
-          <span className="text-[#b9aa94]">Calzada</span>
-          <span className={building.roadConnected ? 'text-[#89c983]' : 'text-[#f08b78]'}>
-            {building.roadConnected ? 'Conectada' : 'Sin conexión'}
-          </span>
-        </div>
+        <StatRow
+          icon={Road01Icon}
+          label="Calzada"
+          value={building.roadConnected ? 'Conectada' : 'Sin conexión'}
+          valueClassName={building.roadConnected ? 'text-[#89c983]' : 'text-[#f08b78]'}
+        />
 
         {def.upkeepPerMin > 0 && (
-          <div className="flex items-center justify-between">
-            <span className="text-[#b9aa94]">Mantenimiento</span>
-            <span className="font-mono-num text-[#e57c6f]">-{def.upkeepPerMin} d/min</span>
-          </div>
+          <StatRow
+            icon={Coins01Icon}
+            label="Mantenimiento"
+            value={`-${def.upkeepPerMin}/m`}
+            valueClassName="text-[#e57c6f]"
+          />
         )}
 
         {/* Producer details */}
         {def.produces && (
           <>
             {def.consumes && (
-              <div className="flex items-center justify-between">
-                <span className="text-[#b9aa94]">
-                  Insumo ({RESOURCE_META[def.consumes].label})
-                </span>
-                <span className="font-mono-num">{building.inputBuffer} / 8</span>
-              </div>
+              <ResourceStatRow
+                resource={def.consumes}
+                label={`Insumo: ${RESOURCE_META[def.consumes].label}`}
+                value={`${building.inputBuffer}/8`}
+              />
             )}
-            <div className="flex items-center justify-between">
-              <span className="text-[#b9aa94]">
-                Salida ({RESOURCE_META[def.produces].label})
-              </span>
-              <span className="font-mono-num">{building.outputBuffer} / 8</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#b9aa94]">Mano de obra</span>
-              <span
-                className={`font-mono-num ${
-                  hud.staffingRatio < 1 ? 'text-[#e5986f]' : 'text-[#89c983]'
-                }`}
-              >
-                {Math.round(hud.staffingRatio * 100)}%
-              </span>
-            </div>
+            <ResourceStatRow
+              resource={def.produces}
+              label={`Salida: ${RESOURCE_META[def.produces].label}`}
+              value={`${building.outputBuffer}/8`}
+            />
+            <StatRow
+              icon={UserGroupIcon}
+              label="Mano de obra"
+              value={`${Math.round(hud.staffingRatio * 100)}%`}
+              valueClassName={
+                hud.staffingRatio < 1 ? 'text-[#e5986f]' : 'text-[#89c983]'
+              }
+            />
             {(building.type === 'wheat_farm' || building.type === 'vineyard') && (
-              <div className="flex items-center justify-between">
-                <span className="text-[#b9aa94]">Rendimiento climático</span>
-                <span
-                  className={`font-mono-num ${
-                    hud.farmEfficiencyMultiplier > 1
-                      ? 'text-[#89c983]'
-                      : hud.farmEfficiencyMultiplier < 1
-                        ? 'text-[#e5986f]'
-                        : 'text-[#d6c9b4]'
-                  }`}
-                >
-                  {Math.round(hud.farmEfficiencyMultiplier * 100)}%
-                </span>
-              </div>
+              <StatRow
+                icon={SunCloud01Icon}
+                label="Rendimiento climático"
+                value={`${Math.round(hud.farmEfficiencyMultiplier * 100)}%`}
+                valueClassName={
+                  hud.farmEfficiencyMultiplier > 1
+                    ? 'text-[#89c983]'
+                    : hud.farmEfficiencyMultiplier < 1
+                      ? 'text-[#e5986f]'
+                      : 'text-[#d6c9b4]'
+                }
+              />
             )}
-            <div>
+            <div title="Ciclo de trabajo">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-[#b9aa94]">Ciclo de trabajo</span>
+                <span className="flex items-center gap-1.5 text-[#b9aa94]">
+                  <HugeIcon icon={Clock01Icon} size={14} aria-hidden="true" />
+                  <span className="sr-only">Ciclo de trabajo</span>
+                </span>
                 <span className="font-mono-num">{Math.round(building.cycleProgress * 100)}%</span>
               </div>
               <div className="w-full h-1.5 rounded bg-[#2d261e] overflow-hidden">
@@ -180,15 +251,85 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           </>
         )}
 
+        {/* Finite extraction deposit */}
+        {hud.selectedReserve !== null && (
+          <div className="pt-2 border-t border-[#b78e4a]/20 space-y-1.5">
+            <StatRow
+              icon={Layers01Icon}
+              label="Reserva del yacimiento"
+              value={`${hud.selectedReserve} uds.`}
+              valueClassName={
+                hud.selectedReserve < 40 ? 'text-[#e5986f] font-semibold' : 'text-[#e6dccb] font-semibold'
+              }
+            />
+            <p className="text-[11px] leading-relaxed text-[#b9aa94]">
+              Al agotarse, el filón se vuelve terreno baldío. Tendrás que explorar y llevar una
+              calzada hasta otro bosque, cantera o veta.
+            </p>
+          </div>
+        )}
+
+        {/* Wheat sowing cycle */}
+        {building.type === 'wheat_farm' && (
+          <div className="pt-2 border-t border-[#b78e4a]/20 space-y-1.5">
+            <StatRow
+              icon={SproutIcon}
+              label="Siembra"
+              value={
+                building.sown
+                  ? `Sembrado · ${building.harvestsLeft ?? 0} cosechas`
+                  : 'En barbecho'
+              }
+              valueClassName={building.sown ? 'text-[#89c983]' : 'text-[#f08b78]'}
+            />
+            <button
+              type="button"
+              disabled={Boolean(building.sown) || hud.stock.wheat < WHEAT_SOW_COST}
+              onClick={() => onSowWheat(building.id)}
+              className={`w-full py-2 px-3 rounded text-xs font-semibold transition-colors ${
+                !building.sown && hud.stock.wheat >= WHEAT_SOW_COST
+                  ? 'bg-[#c9953c] text-[#17120c] hover:bg-[#dba84f] cursor-pointer'
+                  : 'bg-[#2a231c] text-[#8d7f6b] cursor-not-allowed'
+              }`}
+            >
+              {building.sown
+                ? 'Campo ya sembrado'
+                : `Sembrar (${WHEAT_SOW_COST} Trigo) · ${WHEAT_HARVESTS_PER_SOWING} cosechas`}
+            </button>
+            {!building.sown && hud.stock.wheat < WHEAT_SOW_COST && (
+              <p className="text-[11px] text-[#e5986f]">
+                No queda Trigo en el Horreum. Reserva una cosecha para poder sembrar.
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Watchtower reveal radius */}
+        {def.revealRadius !== undefined && (
+          <StatRow
+            icon={CloudFogIcon}
+            label="Despeja niebla"
+            value={`radio ${def.revealRadius}`}
+            valueClassName="text-[#e6dccb]"
+          />
+        )}
+
         {/* Market inventory */}
         {building.type === 'market' && (
           <div className="pt-2 border-t border-[#b78e4a]/20 space-y-1.5">
-            <div className="text-[#d4a656] font-medium">Existencias del Mercado</div>
+            <div className="flex items-center gap-1.5 text-[#d4a656]" title="Existencias del Mercado">
+              <HugeIcon icon={Store01Icon} size={14} aria-hidden="true" />
+              <span className="sr-only">Existencias del Mercado</span>
+            </div>
             {(['bread', 'wine', 'pottery'] as ResourceId[]).map((good) => (
-              <div key={good} className="flex items-center justify-between">
+              <div
+                key={good}
+                className="flex items-center justify-between"
+                title={RESOURCE_META[good].label}
+              >
                 <span className="flex items-center gap-1.5 text-[#cfc3b0]">
                   <ResourceIcon resource={good} className="w-3.5 h-3.5" />
-                  {RESOURCE_META[good].label}
+                  <span className="sr-only">{RESOURCE_META[good].label}</span>
                 </span>
                 <span className="font-mono-num">
                   {(building.marketStock[good] ?? 0).toFixed(1)}
@@ -201,57 +342,45 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         {/* Housing needs */}
         {def.isHousing && (
           <div className="pt-2 border-t border-[#b78e4a]/20 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[#b9aa94]">Habitantes</span>
-              <span className="font-mono-num font-semibold">
-                {Math.round(building.residents)} / {def.maxResidents}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#b9aa94]">Agua (Fuente)</span>
-              <span className={building.hasWater ? 'text-[#89c983]' : 'text-[#f08b78]'}>
-                {building.hasWater ? 'Cubierta' : 'Falta'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#b9aa94]">Mercado</span>
-              <span className={building.hasMarket ? 'text-[#89c983]' : 'text-[#f08b78]'}>
-                {building.hasMarket ? 'Cubierto' : 'Falta'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[#b9aa94]">Pan</span>
-              <span className={building.hasBread ? 'text-[#89c983]' : 'text-[#f08b78]'}>
-                {building.hasBread ? 'Abastecido' : 'Falta'}
-              </span>
-            </div>
-            {building.type === 'house_cives' && (
-              <>
-                <div className="flex items-center justify-between">
-                  <span className="text-[#b9aa94]">Vino</span>
-                  <span className={building.hasWine ? 'text-[#89c983]' : 'text-[#f08b78]'}>
-                    {building.hasWine ? 'Abastecido' : 'Falta'}
+            <StatRow
+              icon={UserGroupIcon}
+              label="Habitantes"
+              value={`${Math.round(building.residents)} / ${def.maxResidents}`}
+              valueClassName="font-semibold"
+            />
+            <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+              {housingNeeds.map((need) => (
+                <div
+                  key={need.label}
+                  title={`${need.label}: ${need.ok ? 'cubierta' : 'pendiente'}`}
+                  className={`flex flex-col items-center justify-center gap-0.5 py-1.5 rounded border ${
+                    need.ok
+                      ? 'bg-[#26321f] text-[#89c983] border-[#669c5b]/35'
+                      : 'bg-[#351f1c] text-[#f08b78] border-[#c64635]/35'
+                  }`}
+                >
+                  <span className="flex items-center gap-1">
+                    <HugeIcon icon={need.icon} size={15} aria-hidden="true" />
+                    <HugeIcon
+                      icon={need.ok ? CheckmarkCircle02Icon : Cancel01Icon}
+                      size={11}
+                      aria-hidden="true"
+                    />
+                  </span>
+                  <span className="text-[10px] leading-none opacity-90">{need.short}</span>
+                  <span className="sr-only">
+                    {need.label}: {need.ok ? 'cubierta' : 'pendiente'}
                   </span>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[#b9aa94]">Cerámica</span>
-                  <span className={building.hasPottery ? 'text-[#89c983]' : 'text-[#f08b78]'}>
-                    {building.hasPottery ? 'Abastecida' : 'Falta'}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-[#b9aa94]">Templo / Foro</span>
-                  <span className={building.hasTemple ? 'text-[#89c983]' : 'text-[#f08b78]'}>
-                    {building.hasTemple ? 'Cubierto' : 'Falta'}
-                  </span>
-                </div>
-              </>
-            )}
+              ))}
+            </div>
 
             {building.type === 'house_liberti' && (
               <button
                 type="button"
                 disabled={!canUpgradeAfford}
+                title={`Ascender a Insula: ${UPGRADE_CIVES_COST.denarii} denarios, ${UPGRADE_CIVES_COST.wood} madera y ${UPGRADE_CIVES_COST.stone} piedra`}
+                aria-label={`Ascender a Insula: ${UPGRADE_CIVES_COST.denarii} denarios, ${UPGRADE_CIVES_COST.wood} madera y ${UPGRADE_CIVES_COST.stone} piedra`}
                 onClick={() => onUpgradeBuilding(building.id)}
                 className={`mt-2 w-full py-2 px-3 rounded text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors ${
                   canUpgradeAfford
@@ -259,10 +388,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                     : 'bg-[#2a231c] text-[#8d7f6b] cursor-not-allowed'
                 }`}
               >
-                <ArrowUpCircle className="w-4 h-4" />
-                <span>
-                  Ascender a Insula ({UPGRADE_CIVES_COST.denarii}d · {UPGRADE_CIVES_COST.wood}m ·{' '}
-                  {UPGRADE_CIVES_COST.stone}p)
+                <HugeIcon icon={ArrowUp02Icon} size={15} aria-hidden="true" />
+                <span>Insula</span>
+                <span className="opacity-85">
+                  {UPGRADE_CIVES_COST.denarii}d · {UPGRADE_CIVES_COST.wood}m ·{' '}
+                  {UPGRADE_CIVES_COST.stone}p
                 </span>
               </button>
             )}
@@ -290,6 +420,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
             <button
               type="button"
               disabled={!canAffordFireBrigade}
+              title={`Extinguir incendio: ${EXTINGUISH_COST} denarios`}
+              aria-label={`Extinguir incendio: ${EXTINGUISH_COST} denarios`}
               onClick={() => onExtinguishFire(building.id)}
               className={`w-full py-2 px-3 rounded text-xs font-semibold flex items-center justify-center gap-1.5 ${
                 canAffordFireBrigade
@@ -297,9 +429,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
                   : 'bg-[#2a231c] text-[#8d7f6b] cursor-not-allowed'
               }`}
             >
-              <Flame className="w-4 h-4" />
-              <span>
-                Extinguir incendio ({EXTINGUISH_COST} d)
+              <HugeIcon icon={FireIcon} size={15} aria-hidden="true" />
+              <span>Extinguir</span>
+              <span className="flex items-center gap-1 opacity-85">
+                <HugeIcon icon={Coins01Icon} size={11} aria-hidden="true" />
+                {EXTINGUISH_COST}
               </span>
             </button>
             {!canAffordFireBrigade && (
@@ -313,10 +447,15 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         <div className="pt-2 border-t border-[#b78e4a]/20">
           <button
             type="button"
+            title="Demoler estructura"
+            aria-label="Demoler estructura"
             onClick={() => onDemolishBuilding(building)}
             className="w-full py-1.5 px-3 rounded text-xs font-medium bg-[#351f1c] text-[#f4b0a5] border border-[#c64635]/40 hover:bg-[#492723] cursor-pointer"
           >
-            Demoler estructura
+            <span className="inline-flex items-center justify-center gap-1.5">
+              <HugeIcon icon={Hammer01Icon} size={14} aria-hidden="true" />
+              Demoler
+            </span>
           </button>
         </div>
       </div>

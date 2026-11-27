@@ -31,6 +31,7 @@ export type BuildingType =
   | 'market'
   | 'temple'
   | 'forum'
+  | 'watchtower'
   | 'woodcutter'
   | 'stone_quarry'
   | 'clay_pit'
@@ -63,6 +64,8 @@ export interface BuildingDef {
   upkeepPerMin: number;
   requiredTerrain?: TerrainKind;
   serviceRadius?: number;
+  /** Tiles of fog revealed around this building when it is constructed. */
+  revealRadius?: number;
   produces?: ResourceId;
   consumes?: ResourceId;
   cycleSeconds?: number;
@@ -85,6 +88,10 @@ export interface Tile {
   buildingId: number | null;
   isRoad: boolean;
   variant: number;
+  /** Fog of war: false until a road, building or watchtower reveals the tile. */
+  discovered: boolean;
+  /** Remaining extraction units. Only forest, stone and clay tiles have a reserve. */
+  reserve?: number;
 }
 
 export type AlertReason =
@@ -98,7 +105,9 @@ export type AlertReason =
   | 'no_bread'
   | 'no_wine'
   | 'no_pottery'
-  | 'no_temple';
+  | 'no_temple'
+  | 'depleted'
+  | 'needs_seed';
 
 export type NotificationKind =
   | 'fire'
@@ -149,7 +158,12 @@ export interface PlacedBuilding {
   hasPottery: boolean;
   upgradeReady: boolean;
   onFireTimer: number;
+  /** Seconds without bread; after a grace period residents start dying. */
+  starvationTimer: number;
   alerts: AlertReason[];
+  /** Wheat farm lifecycle: a sowing yields several harvests, then goes fallow. */
+  sown?: boolean;
+  harvestsLeft?: number;
   // Animation phase
   animSeed: number;
 }
@@ -263,6 +277,8 @@ export interface WorldState {
   _producedInWindow: Record<ResourceId, number>;
   _consumedInWindow: Record<ResourceId, number>;
   _notificationCooldowns: Record<string, number>;
+  /** Incremented whenever fog is lifted so the renderer can refresh its layer. */
+  fogVersion: number;
 }
 
 export interface HudSnapshot {
@@ -294,6 +310,7 @@ export interface HudSnapshot {
   dayTime: number;
   selectedBuilding: PlacedBuilding | null;
   selectedCart: Cart | null;
+  selectedReserve: number | null;
 }
 
 export interface SavePayload {

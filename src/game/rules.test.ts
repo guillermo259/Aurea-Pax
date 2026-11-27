@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { BUILDINGS, VICTORY_GOALS } from './catalog';
+import { BUILDINGS, VICTORY_GOALS, WHEAT_HARVESTS_PER_SOWING } from './catalog';
 import { DAY_CYCLE_SECONDS, getDaylightColorFilter, getDayPhaseInfo } from './dayCycle';
 import { createStarterWorld, getTileIndex } from './mapGen';
 import { findRoadPathBetweenBuildings } from './pathfinding';
@@ -19,9 +19,11 @@ import {
   demolishAt,
   EXTINGUISH_COST,
   extinguishFire,
+  getExtractionReserve,
   getStaffingRatio,
   placeBuilding,
   recomputeStaticStatuses,
+  sowWheatFarm,
   stepSimulation,
   upgradeHouse,
 } from './simulation';
@@ -310,6 +312,68 @@ test('critical events emit fire, shortage, and road-disconnection notifications 
   );
 });
 
+test('prolonged bread shortages kill residents instead of stopping at the reduced target', () => {
+  const world = createStarterWorld(11701);
+  const market = world.buildings.find((b) => b.type === 'market');
+  const houses = world.buildings.filter((b) => b.type === 'house_liberti');
+  assert.ok(market);
+  assert.equal(houses.length, 2);
+
+  for (const house of houses) house.residents = 8;
+  market.marketStock.bread = 0;
+  world.stock.bread = 0;
+  world.carts = [];
+  recomputeStaticStatuses(world);
+
+  assert.equal(houses[0].hasBread, false);
+  assert.equal(world.totalPopulation, 16);
+
+  // The household first shrinks to the reduced target, then hunger starts
+  // killing residents after the grace period.
+  for (let i = 0; i < 80; i++) {
+    stepSimulation(world, 0.5);
+  }
+
+  assert.ok(houses.every((house) => house.residents === 0), 'All residents should die during a famine');
+  assert.ok(world.totalPopulation < 16, 'Population must fall when there is no bread');
+  assert.ok(
+    world.pendingNotifications.some((n) => n.title === 'Hambruna'),
+    'A famine notification must warn the player',
+  );
+});
+
+test('an unextinguished fire destroys the building and frees its footprint', () => {
+  const world = createStarterWorld(11701);
+  recomputeStaticStatuses(world);
+
+  const target = world.buildings.find((b) => b.type === 'house_liberti');
+  assert.ok(target);
+  const burnedId = target.id;
+  const burnedName = BUILDINGS[target.type].name;
+  target.onFireTimer = 0.1;
+
+  stepSimulation(world, 0.5);
+
+  assert.equal(
+    world.buildings.some((b) => b.id === burnedId),
+    false,
+    'A building whose fire timer reaches zero must be removed',
+  );
+  for (let dy = 0; dy < target.size; dy++) {
+    for (let dx = 0; dx < target.size; dx++) {
+      const burnedTile: (typeof world.tiles)[number] =
+        world.tiles[getTileIndex(target.x + dx, target.y + dy, world.width)];
+      assert.equal(burnedTile.buildingId, null, 'Burned footprint must be cleared');
+    }
+  }
+  assert.ok(
+    world.pendingNotifications.some(
+      (n) => n.kind === 'fire' && n.title === 'Edificio calcinado' && n.message.includes(burnedName),
+    ),
+    'Fire destruction must notify the player with the building name',
+  );
+});
+
 test('day-night color filter darkens progressively from dusk through night to dawn and advances with simulation', () => {
   const noon = getDaylightColorFilter(0.5); // 12:00
   const dusk = getDaylightColorFilter(18.5 / 24); // 18:30
@@ -470,6 +534,9 @@ test('staffing ratio clamps understaffed workshops to 50% and reaches 100% with 
   world.buildings = [base];
   world.totalPopulation = 100;
   assert.equal(getStaffingRatio(world), 1);
+
+  world.totalPopulation = 0;
+  assert.equal(getStaffingRatio(world), 0, 'A dead settlement cannot staff workshops');
 });
 
 test('extinguishing a fire costs denarii and is refused when the treasury cannot pay', () => {
@@ -535,6 +602,128 @@ test('victory requirements can be relaxed for sandbox and custom scenarios', () 
   const strict = createStarterWorld(11701);
   recomputeStaticStatuses(strict);
   assert.equal(strict.victoryAchieved, false, 'Default goals still require a Forum and positive income');
+});
+
+test('fog of war blocks construction and a watchtower reveals the frontier', () => {
+  const world = createStarterWorld(11701);
+  recomputeStaticStatuses(world);
+  world.denarii = 2000;
+
+  const hidden = world.tiles.find(
+    (t) => !t.discovered && t.terrain !== 'water' && t.buildingId === null && !t.isRoad,
+  );
+  assert.ok(hidden, 'Starter map should still contain unexplored land');
+  const blocked = canPlaceBuilding(world, 'road', hidden.x, hidden.y);
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.reason ?? '', /inexplorado/i);
+
+  const spot = world.tiles.find(
+    (t) => t.discovered && t.terrain === 'grass' && t.buildingId === null && !t.isRoad,
+  );
+  assert.ok(spot);
+  const before = world.tiles.filter((t) => t.discovered).length;
+  const tower = placeBuilding(world, 'watchtower', spot.x, spot.y);
+  assert.equal(tower.ok, true);
+  const after = world.tiles.filter((t) => t.discovered).length;
+  assert.ok(after > before, 'Watchtower must lift fog around its position');
+  assert.ok(world.fogVersion > 1);
+});
+
+test('extraction sites are finite and leave barren ground when exhausted', () => {
+  const world = createStarterWorld(11701);
+  recomputeStaticStatuses(world);
+  const cutter = world.buildings.find((b) => b.type === 'woodcutter');
+  assert.ok(cutter);
+  const tile = world.tiles[getTileIndex(cutter.x, cutter.y, world.width)];
+  tile.reserve = 1;
+  assert.equal(getExtractionReserve(world, cutter), 1);
+
+  for (let i = 0; i < 120; i++) {
+    cutter.outputBuffer = 0;
+    stepSimulation(world, 0.5);
+  }
+
+  assert.equal(tile.reserve, 0);
+  assert.equal(tile.terrain, 'grass', 'Exhausted forest must become barren ground');
+  assert.ok(cutter.alerts.includes('depleted'));
+  demolishAt(world, cutter.x, cutter.y);
+  const rebuild = canPlaceBuilding(world, 'woodcutter', cutter.x, cutter.y);
+  assert.equal(rebuild.ok, false);
+  assert.match(rebuild.reason ?? '', /bosque/i);
+});
+
+test('wheat fields go fallow after a sowing and require seed to replant', () => {
+  const world = createStarterWorld(11701);
+  recomputeStaticStatuses(world);
+  world.denarii = 2000;
+  world.stock.wood = 100;
+  world.stock.stone = 100;
+  world.stock.wheat = 5;
+
+  for (let x = 11; x <= 14; x++) {
+    const t = world.tiles[getTileIndex(x, 24, world.width)];
+    t.terrain = 'grass';
+    t.isRoad = false;
+    t.buildingId = null;
+    placeBuilding(world, 'road', x, 24);
+  }
+  world.tiles[getTileIndex(12, 23, world.width)].terrain = 'fertile';
+  const farm = placeBuilding(world, 'wheat_farm', 12, 23);
+  assert.equal(farm.ok, true);
+  const field = farm.building!;
+  assert.equal(field.sown, true, 'A newly built farm starts sown');
+  assert.equal(field.harvestsLeft, WHEAT_HARVESTS_PER_SOWING);
+
+  for (let i = 0; i < 400; i++) {
+    field.outputBuffer = 0;
+    stepSimulation(world, 0.5);
+  }
+
+  assert.equal(field.sown, false, 'After its harvests the field must be fallow');
+  assert.equal(field.harvestsLeft, 0);
+  assert.ok(field.alerts.includes('needs_seed'));
+
+  world.stock.wheat = 0;
+  assert.equal(sowWheatFarm(world, field.id), false);
+  world.stock.wheat = 5;
+  assert.equal(sowWheatFarm(world, field.id), true);
+  assert.equal(field.sown, true);
+  assert.equal(field.harvestsLeft, WHEAT_HARVESTS_PER_SOWING);
+  assert.equal(world.stock.wheat, 4, 'Re-sowing consumes one wheat as seed');
+});
+
+test('legacy saves migrate to fog around their developed area', () => {
+  const legacy = JSON.parse(JSON.stringify(serializeWorld(createStarterWorld(11701)))) as {
+    version: number;
+    world: { tiles: Array<Record<string, unknown>>; fogVersion?: number };
+  };
+  legacy.version = 1;
+  delete legacy.world.fogVersion;
+  for (const tile of legacy.world.tiles) {
+    delete tile.discovered;
+    delete tile.reserve;
+  }
+
+  const restored = deserializeWorld(JSON.stringify(legacy));
+  const discovered = restored.tiles.filter((t) => t.discovered).length;
+  assert.ok(discovered > 0, 'Roads and buildings from an old save stay visible');
+  assert.ok(discovered < restored.tiles.length, 'The rest of the old map starts fogged');
+  assert.ok(restored.tiles.some((t) => t.terrain === 'forest' && (t.reserve ?? 0) > 0));
+});
+
+test('fog and finite reserves survive a save round-trip', () => {
+  const world = createStarterWorld(11701);
+  const hiddenBefore = world.tiles.filter((t) => !t.discovered).length;
+  const forestBefore = world.tiles.find((t) => t.terrain === 'forest');
+  assert.ok(forestBefore);
+  forestBefore.reserve = 42;
+
+  const restored = deserializeWorld(JSON.stringify(serializeWorld(world)));
+  assert.equal(restored.tiles.filter((t) => !t.discovered).length, hiddenBefore);
+  assert.equal(
+    restored.tiles[getTileIndex(forestBefore.x, forestBefore.y, world.width)].reserve,
+    42,
+  );
 });
 
 test('autosave backup recovers the previous save when the primary copy is corrupt', () => {

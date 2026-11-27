@@ -1,6 +1,21 @@
-import { ALERT_LABELS, BUILDINGS, RESOURCE_META, RESOURCE_ORDER, VICTORY_GOALS } from './catalog';
+import {
+  ALERT_LABELS,
+  BUILDINGS,
+  RESOURCE_META,
+  RESOURCE_ORDER,
+  VICTORY_GOALS,
+  WHEAT_HARVESTS_PER_SOWING,
+  WHEAT_SOW_COST,
+} from './catalog';
 import { DAY_CYCLE_SECONDS, normalizeDayTime } from './dayCycle';
-import { createBuildingRecord, emptyResourceRecord, getTileIndex, inBounds } from './mapGen';
+import {
+  createBuildingRecord,
+  defaultTileReserve,
+  emptyResourceRecord,
+  getTileIndex,
+  inBounds,
+  revealAround,
+} from './mapGen';
 import { findRoadPathBetweenBuildings, getBuildingCenter, getBuildingRoadEntries } from './pathfinding';
 import {
   AlertReason,
@@ -67,6 +82,11 @@ const FIRE_SUSCEPTIBLE_TYPES = new Set<BuildingType>([
   'house_cives',
 ]);
 
+/** Bread-free seconds before hunger starts killing residents. */
+export const STARVATION_GRACE_SECONDS = 12;
+/** Residents lost per second, per starving household, once the grace period ends. */
+export const STARVATION_DEATH_RATE = 0.35;
+
 export function queueNotification(
   world: WorldState,
   notif: PendingGameNotification,
@@ -94,9 +114,44 @@ export function extinguishFire(world: WorldState, buildingId: number): boolean {
   return true;
 }
 
+function destroyBurnedBuilding(world: WorldState, b: PlacedBuilding): void {
+  const def = BUILDINGS[b.type];
+  for (let dy = 0; dy < b.size; dy++) {
+    for (let dx = 0; dx < b.size; dx++) {
+      const tile = world.tiles[getTileIndex(b.x + dx, b.y + dy, world.width)];
+      if (tile?.buildingId === b.id) tile.buildingId = null;
+    }
+  }
+
+  world.buildings = world.buildings.filter((item) => item.id !== b.id);
+  world.carts = world.carts.filter(
+    (cart) => cart.ownerBuildingId !== b.id && cart.targetBuildingId !== b.id,
+  );
+  world.citizens = world.citizens.filter(
+    (citizen) => citizen.originBuildingId !== b.id && citizen.targetBuildingId !== b.id,
+  );
+  recomputeStaticStatuses(world);
+
+  queueNotification(
+    world,
+    {
+      kind: 'fire',
+      severity: 'critical',
+      title: 'Edificio calcinado',
+      message: `${def.name} no pudo sofocarse y ha quedado destruido.`,
+      dedupeKey: `fire_destroyed:${b.id}`,
+      x: b.x,
+      y: b.y,
+      durationMs: 7500,
+    },
+    5,
+  );
+}
+
 function advanceFires(world: WorldState, simDt: number): void {
   const fountains = world.buildings.filter((b) => b.type === 'fountain' && b.roadConnected);
   let anyBurning = false;
+  const burned: PlacedBuilding[] = [];
 
   for (const b of world.buildings) {
     if (b.onFireTimer <= 0) continue;
@@ -106,7 +161,10 @@ function advanceFires(world: WorldState, simDt: number): void {
     );
     const coolRate = nearFountain ? 2.0 : 1.0;
     b.onFireTimer = Math.max(0, b.onFireTimer - simDt * coolRate);
+    if (b.onFireTimer <= 0) burned.push(b);
   }
+
+  for (const b of burned) destroyBurnedBuilding(world, b);
 
   world.fireCooldownSeconds = Math.max(0, world.fireCooldownSeconds - simDt);
 
@@ -135,7 +193,7 @@ function advanceFires(world: WorldState, simDt: number): void {
           kind: 'fire',
           severity: 'critical',
           title: '¡Incendio en la ciudad!',
-          message: `${BUILDINGS[target.type].name} en llamas. Inspecciónelo para extinguir el fuego.`,
+          message: `${BUILDINGS[target.type].name} en llamas. Inspecciónelo para extinguir el fuego antes de que se pierda.`,
           dedupeKey: `fire:${target.id}`,
           x: target.x,
           y: target.y,
@@ -159,6 +217,21 @@ export const UPGRADE_CIVES_COST = {
 /** Cost in denarii of sending the fire brigade to a burning building. */
 export const EXTINGUISH_COST = 15;
 
+const EXTRACTION_TYPES = new Set<BuildingType>(['woodcutter', 'stone_quarry', 'clay_pit']);
+
+/** Remaining extraction units for a woodcutter/quarry/clay pit, or null otherwise. */
+export function getExtractionReserve(world: WorldState, b: PlacedBuilding): number | null {
+  if (!EXTRACTION_TYPES.has(b.type)) return null;
+  const tile = world.tiles[getTileIndex(b.x, b.y, world.width)];
+  return Math.max(0, Math.floor(tile?.reserve ?? 0));
+}
+
+function isProducerIdle(world: WorldState, b: PlacedBuilding): boolean {
+  if (b.type === 'wheat_farm' && b.sown === false) return true;
+  if (EXTRACTION_TYPES.has(b.type)) return (getExtractionReserve(world, b) ?? 0) <= 0;
+  return false;
+}
+
 /**
  * Share of the workforce actually available to production buildings.
  * Housing supplies 75% of its residents as workers; understaffing slows every
@@ -167,12 +240,13 @@ export const EXTINGUISH_COST = 15;
 export function getStaffingRatio(world: WorldState): number {
   let demand = 0;
   for (const b of world.buildings) {
-    if (b.roadConnected && b.onFireTimer <= 0) {
+    if (b.roadConnected && b.onFireTimer <= 0 && !isProducerIdle(world, b)) {
       demand += BUILDINGS[b.type].workerNeed ?? 0;
     }
   }
   if (demand === 0) return 1;
   const available = world.totalPopulation * 0.75;
+  if (available <= 0) return 0;
   return Math.min(1, Math.max(0.5, available / demand));
 }
 
@@ -204,6 +278,9 @@ export function canPlaceBuilding(
   for (let dy = 0; dy < def.size; dy++) {
     for (let dx = 0; dx < def.size; dx++) {
       const tile = world.tiles[getTileIndex(x + dx, y + dy, world.width)];
+      if (!tile.discovered) {
+        return { ok: false, reason: 'Terreno inexplorado: despeja la niebla primero' };
+      }
       if (tile.terrain === 'water') {
         return { ok: false, reason: 'No se puede construir sobre agua' };
       }
@@ -258,6 +335,7 @@ export function placeBuilding(
     const tile = world.tiles[getTileIndex(x, y, world.width)];
     tile.isRoad = true;
     world.roadVersion += 1;
+    revealAround(world, x, y, 2);
     recomputeStaticStatuses(world);
     return { ok: true };
   }
@@ -271,6 +349,18 @@ export function placeBuilding(
     }
   }
   world.buildings.push(building);
+  if (EXTRACTION_TYPES.has(type)) {
+    const deposit = world.tiles[getTileIndex(x, y, world.width)];
+    if (!deposit.reserve) {
+      deposit.reserve = defaultTileReserve(deposit.terrain, x, y, world.seed);
+    }
+  }
+  revealAround(
+    world,
+    x + (def.size - 1) * 0.5,
+    y + (def.size - 1) * 0.5,
+    def.revealRadius ?? 3,
+  );
   recomputeStaticStatuses(world);
   return { ok: true, building };
 }
@@ -349,6 +439,62 @@ export function demolishAt(world: WorldState, x: number, y: number): boolean {
   }
 
   return false;
+}
+
+/** Re-sows a fallow wheat field, consuming one unit of wheat as seed. */
+export function sowWheatFarm(world: WorldState, buildingId: number): boolean {
+  const b = world.buildings.find((item) => item.id === buildingId);
+  if (!b || b.type !== 'wheat_farm' || b.sown) return false;
+  if (world.stock.wheat < WHEAT_SOW_COST) return false;
+
+  world.stock.wheat -= WHEAT_SOW_COST;
+  world._consumedInWindow.wheat += WHEAT_SOW_COST;
+  b.sown = true;
+  b.harvestsLeft = WHEAT_HARVESTS_PER_SOWING;
+  b.cycleProgress = 0;
+  recomputeStaticStatuses(world);
+  return true;
+}
+
+/**
+ * A household first shrinks toward its reduced target while bread is missing.
+ * If the shortage persists, residents start dying instead of stabilizing at
+ * the target floor. Bread returning resets the hunger clock.
+ */
+function advanceStarvation(
+  world: WorldState,
+  b: PlacedBuilding,
+  targetPop: number,
+  declineRate: number,
+  simDt: number,
+): void {
+  b.starvationTimer += simDt;
+
+  if (b.residents > targetPop) {
+    b.residents = Math.max(targetPop, b.residents - simDt * declineRate);
+    return;
+  }
+  if (b.starvationTimer < STARVATION_GRACE_SECONDS) return;
+
+  const wasAlive = b.residents > 0;
+  b.residents = Math.max(0, b.residents - simDt * STARVATION_DEATH_RATE);
+  if (!wasAlive) return;
+
+  queueNotification(
+    world,
+    {
+      kind: 'resource_shortage',
+      severity: 'critical',
+      title: 'Hambruna',
+      message: 'La falta de Pan está matando a la población. Abastece el Mercado.',
+      dedupeKey: 'starvation:famine',
+      x: b.x,
+      y: b.y,
+      buildingId: b.id,
+      durationMs: 6500,
+    },
+    45,
+  );
 }
 
 export function canUpgradeHouse(world: WorldState, building: PlacedBuilding): PlacementCheckResult {
@@ -439,6 +585,12 @@ export function recomputeStaticStatuses(world: WorldState): void {
     }
     if (def.needsRoad && !b.roadConnected) {
       alerts.push('no_road');
+    }
+    if (b.type === 'wheat_farm' && b.sown === false) {
+      alerts.push('needs_seed');
+    }
+    if (EXTRACTION_TYPES.has(b.type) && (getExtractionReserve(world, b) ?? 0) <= 0) {
+      alerts.push('depleted');
     }
 
     if (def.isHousing) {
@@ -946,12 +1098,18 @@ export function stepSimulation(world: WorldState, simDt: number): void {
   const logisticsDue = world._logisticsTimer >= 0.2;
 
   // 1. Update production cycles
+  let statusDirty = false;
   for (const b of world.buildings) {
     const def = BUILDINGS[b.type];
     if (!def.produces || !def.cycleSeconds || !b.roadConnected || b.onFireTimer > 0) continue;
     if (b.outputBuffer >= 6) continue;
     if (def.consumes && b.inputBuffer < 1) continue;
+    if (isProducerIdle(world, b)) continue;
 
+    const isExtractor = EXTRACTION_TYPES.has(b.type);
+    const depositTile = isExtractor
+      ? world.tiles[getTileIndex(b.x, b.y, world.width)]
+      : null;
     const isFarm = b.type === 'wheat_farm' || b.type === 'vineyard';
     const effMultiplier = isFarm ? farmMultiplier : 1;
     b.cycleProgress += (simDt * effMultiplier * staffingRatio) / def.cycleSeconds;
@@ -964,8 +1122,31 @@ export function stepSimulation(world: WorldState, simDt: number): void {
       const produced = def.batchOutput ?? 1;
       b.outputBuffer = Math.min(8, b.outputBuffer + produced);
       world._producedInWindow[def.produces] += produced;
+
+      if (isExtractor && depositTile) {
+        depositTile.reserve = Math.max(0, (depositTile.reserve ?? 0) - 1);
+        if (depositTile.reserve <= 0) {
+          // The exhausted node becomes barren so it cannot be farmed forever.
+          depositTile.terrain = 'grass';
+          depositTile.elevation = 0;
+          // Also forces the cached terrain layer to repaint the new barren ground.
+          world.fogVersion += 1;
+          statusDirty = true;
+        }
+      }
+
+      if (b.type === 'wheat_farm') {
+        b.harvestsLeft = Math.max(0, (b.harvestsLeft ?? WHEAT_HARVESTS_PER_SOWING) - 1);
+        if (b.harvestsLeft <= 0) {
+          b.sown = false;
+          b.cycleProgress = 0;
+          statusDirty = true;
+        }
+      }
     }
   }
+
+  if (statusDirty) recomputeStaticStatuses(world);
 
   // 2. Housing consumption & population adjustment
   const markets = world.buildings.filter((b) => b.type === 'market' && b.roadConnected);
@@ -988,6 +1169,8 @@ export function stepSimulation(world: WorldState, simDt: number): void {
       }
     };
 
+    const starving = !b.hasBread;
+
     if (b.type === 'house_liberti') {
       consumeFromMarkets('bread', 1.5);
       const targetPop =
@@ -996,10 +1179,15 @@ export function stepSimulation(world: WorldState, simDt: number): void {
           : b.roadConnected && b.hasWater
             ? 4
             : 2;
-      if (b.residents < targetPop) {
-        b.residents = Math.min(targetPop, b.residents + simDt * 0.9);
-      } else if (b.residents > targetPop) {
-        b.residents = Math.max(targetPop, b.residents - simDt * 0.6);
+      if (starving) {
+        advanceStarvation(world, b, targetPop, 0.6, simDt);
+      } else {
+        b.starvationTimer = 0;
+        if (b.residents < targetPop) {
+          b.residents = Math.min(targetPop, b.residents + simDt * 0.9);
+        } else if (b.residents > targetPop) {
+          b.residents = Math.max(targetPop, b.residents - simDt * 0.6);
+        }
       }
     } else {
       consumeFromMarkets('bread', 2.2);
@@ -1011,10 +1199,15 @@ export function stepSimulation(world: WorldState, simDt: number): void {
       if (b.hasPottery) targetPop += 2;
       if (b.hasTemple) targetPop += 1;
       if (!b.roadConnected || !b.hasWater) targetPop = Math.min(targetPop, 6);
-      if (b.residents < targetPop) {
-        b.residents = Math.min(targetPop, b.residents + simDt * 1.1);
-      } else if (b.residents > targetPop) {
-        b.residents = Math.max(targetPop, b.residents - simDt * 0.7);
+      if (starving) {
+        advanceStarvation(world, b, targetPop, 0.7, simDt);
+      } else {
+        b.starvationTimer = 0;
+        if (b.residents < targetPop) {
+          b.residents = Math.min(targetPop, b.residents + simDt * 1.1);
+        } else if (b.residents > targetPop) {
+          b.residents = Math.max(targetPop, b.residents - simDt * 0.7);
+        }
       }
     }
   }
@@ -1042,7 +1235,8 @@ export function stepSimulation(world: WorldState, simDt: number): void {
           kind: 'resource_shortage',
           severity: 'critical',
           title: 'Escasez de Pan',
-          message: 'El Mercado se quedó sin Pan para alimentar a los ciudadanos.',
+          message:
+            'El Mercado se quedó sin Pan. Si no llega pronto, la población empezará a morir.',
           dedupeKey: 'shortage:bread',
           x: houseNoBread.x,
           y: houseNoBread.y,
@@ -1203,5 +1397,9 @@ export function buildHudSnapshot(
     dayTime: world.dayTime,
     selectedBuilding: selectedBuilding ? { ...selectedBuilding, marketStock: { ...selectedBuilding.marketStock }, alerts: [...selectedBuilding.alerts] } : null,
     selectedCart: selectedCart ? { ...selectedCart } : null,
+    selectedReserve:
+      selectedBuilding && EXTRACTION_TYPES.has(selectedBuilding.type)
+        ? getExtractionReserve(world, selectedBuilding)
+        : null,
   };
 }

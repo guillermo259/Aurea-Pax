@@ -1,5 +1,10 @@
-import { BUILDINGS, RESOURCE_ORDER } from './catalog';
-import { emptyResourceRecord, getTileIndex } from './mapGen';
+import { BUILDINGS, RESOURCE_ORDER, WHEAT_HARVESTS_PER_SOWING } from './catalog';
+import {
+  defaultTileReserve,
+  emptyResourceRecord,
+  getTileIndex,
+  revealAround,
+} from './mapGen';
 import { recomputeStaticStatuses } from './simulation';
 import {
   BuildingType,
@@ -16,7 +21,7 @@ import {
 
 const STORAGE_KEY = 'aurea_pax_save_v1';
 const BACKUP_KEY = 'aurea_pax_save_backup_v1';
-const SAVE_VERSION = 1;
+const SAVE_VERSION = 2;
 const MIN_SAVE_VERSION = 1;
 
 /** Reject oversized saves/imports before parsing so a huge file cannot freeze the tab. */
@@ -121,7 +126,13 @@ function sanitizePosition(
   };
 }
 
-function sanitizeTiles(value: unknown, width: number, height: number): Tile[] | null {
+function sanitizeTiles(
+  value: unknown,
+  width: number,
+  height: number,
+  seed: number,
+  legacySave: boolean,
+): Tile[] | null {
   if (!Array.isArray(value) || value.length !== width * height) return null;
 
   const tiles: Tile[] = new Array(width * height);
@@ -132,6 +143,8 @@ function sanitizeTiles(value: unknown, width: number, height: number): Tile[] | 
     const y = (index - x) / width;
     const rawTerrain = raw.terrain as TerrainKind;
     const terrain = VALID_TERRAIN.includes(rawTerrain) ? rawTerrain : 'grass';
+    const extractable = terrain === 'forest' || terrain === 'stone' || terrain === 'clay';
+    const fallbackReserve = extractable ? defaultTileReserve(terrain, x, y, seed) : 0;
     tiles[index] = {
       x,
       y,
@@ -141,6 +154,12 @@ function sanitizeTiles(value: unknown, width: number, height: number): Tile[] | 
       // Roads cannot exist over open water.
       isRoad: raw.isRoad === true && terrain !== 'water',
       variant: clampInt(raw.variant, 0, 0, 3),
+      // v1 saves predate fog; their developed area is revealed below. A v2 tile
+      // missing the flag is treated as known rather than unexpectedly hiding land.
+      discovered: legacySave ? false : raw.discovered !== false,
+      reserve: extractable
+        ? clampInt(raw.reserve, fallbackReserve, 0, MAX_COUNTER)
+        : 0,
     };
   }
   return tiles;
@@ -195,6 +214,12 @@ function sanitizeBuildings(
 
     // Derived state (alerts, service coverage, satisfaction) is rebuilt by
     // recomputeStaticStatuses, so only simulation inputs are restored here.
+    const isWheatFarm = type === 'wheat_farm';
+    const sown = isWheatFarm
+      ? typeof raw.sown === 'boolean'
+        ? raw.sown
+        : true
+      : false;
     const building: PlacedBuilding = {
       id: sanitizeId(raw.id, usedIds),
       type,
@@ -216,7 +241,17 @@ function sanitizeBuildings(
       hasPottery: false,
       upgradeReady: false,
       onFireTimer: clampNumber(raw.onFireTimer, 0, 0, 3600),
+      starvationTimer: clampNumber(raw.starvationTimer, 0, 0, 3600),
       alerts: [],
+      sown: isWheatFarm ? sown : undefined,
+      harvestsLeft: isWheatFarm
+        ? clampInt(
+            raw.harvestsLeft,
+            sown ? WHEAT_HARVESTS_PER_SOWING : 0,
+            0,
+            WHEAT_HARVESTS_PER_SOWING,
+          )
+        : 0,
       animSeed: clampNumber(raw.animSeed, 0, 0, 1),
     };
 
@@ -413,10 +448,11 @@ export function deserializeWorld(rawJson: string): WorldState {
     invalidSave();
   }
 
-  const tiles = sanitizeTiles(raw.tiles, width, height);
+  const seed = clampInt(raw.seed, 11701, 0, 0xffffffff);
+  const legacySave = version < 2;
+  const tiles = sanitizeTiles(raw.tiles, width, height, seed, legacySave);
   if (!tiles) invalidSave();
 
-  const seed = clampInt(raw.seed, 11701, 0, 0xffffffff);
   const buildings = sanitizeBuildings(raw.buildings, width, height, tiles);
   const carts = sanitizeCarts(raw.carts, width, height, buildings);
   const citizens = sanitizeCitizens(raw.citizens, width, height, buildings);
@@ -470,7 +506,23 @@ export function deserializeWorld(rawJson: string): WorldState {
     _notificationCooldowns: {},
     _logisticsTimer: 0,
     _lastReroutedRoadVersion: 0,
+    fogVersion: clampInt(raw.fogVersion, 1, 0, MAX_COUNTER),
   };
+
+  if (legacySave) {
+    // Preserve everything an older colony could already see: its buildings and roads.
+    for (const building of world.buildings) {
+      revealAround(
+        world,
+        building.x + (building.size - 1) * 0.5,
+        building.y + (building.size - 1) * 0.5,
+        BUILDINGS[building.type].revealRadius ?? 3,
+      );
+    }
+    for (const tile of world.tiles) {
+      if (tile.isRoad) revealAround(world, tile.x, tile.y, 2);
+    }
+  }
 
   recomputeStaticStatuses(world);
   return world;

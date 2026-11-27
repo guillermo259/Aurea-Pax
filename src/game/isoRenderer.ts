@@ -494,18 +494,69 @@ function drawBuilding(
       ctx.fill();
       break;
     }
-    case 'wheat_farm': {
-      // Golden wheat rows + small barn
-      drawIsoDiamond(ctx, sx, baseY + 1, TILE_W * 0.88, TILE_H * 0.88);
-      ctx.fillStyle = '#c89b32';
+    case 'watchtower': {
+      // Squat stone base, narrow shaft and a crenellated lookout gallery.
+      drawIsoBox(ctx, sx, baseY + 7, 38, 19, 7, '#cfc5b2', '#9d9381', '#b8ae9b', 'rgba(40,35,30,0.4)');
+      drawIsoBox(ctx, sx, baseY + 2, 21, 11, 33, '#e2d8c4', '#b6ab96', '#cfc4ae', 'rgba(40,35,30,0.35)');
+
+      // Masonry courses and an arrow slit make the shaft read as a tower.
+      ctx.strokeStyle = 'rgba(112, 101, 84, 0.38)';
+      ctx.lineWidth = 1;
+      for (let row = 1; row <= 4; row++) {
+        ctx.beginPath();
+        ctx.moveTo(sx - 8, baseY - row * 6);
+        ctx.lineTo(sx + 8, baseY - row * 6);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#3d3428';
+      ctx.fillRect(sx - 1.5, baseY - 18, 3, 8);
+
+      // Wider timber-and-stone gallery with battlements.
+      drawIsoBox(ctx, sx, baseY - 24, 34, 17, 5, '#d7cdb9', '#a99e89', '#c3b8a2');
+      ctx.fillStyle = '#b9ae99';
+      for (const off of [-11, 0, 11]) {
+        drawIsoBox(ctx, sx + off, baseY - 29, 7, 4, 4, '#e1d6c2', '#aaa08c', '#c6bba5');
+      }
+
+      // Banner and signal brazier on the platform.
+      ctx.strokeStyle = '#5b3b22';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(sx, baseY - 29);
+      ctx.lineTo(sx, baseY - 44);
+      ctx.stroke();
+      ctx.fillStyle = '#a63b2c';
+      ctx.beginPath();
+      ctx.moveTo(sx, baseY - 44);
+      ctx.lineTo(sx + 10, baseY - 41);
+      ctx.lineTo(sx, baseY - 37);
+      ctx.closePath();
       ctx.fill();
-      ctx.strokeStyle = '#e7c35a';
+
+      const flicker = 0.7 + Math.sin(timeSec * 9 + b.id) * 0.3;
+      ctx.fillStyle = `rgba(255, 156, 54, ${0.9 * flicker})`;
+      ctx.beginPath();
+      ctx.ellipse(sx + 5, baseY - 32, 5, 7 * flicker, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255, 226, 130, 0.92)';
+      ctx.beginPath();
+      ctx.ellipse(sx + 5, baseY - 31, 2.4, 3.6 * flicker, 0, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case 'wheat_farm': {
+      // A fallow field shows tilled soil; a sown one shows golden rows.
+      const fallow = b.sown === false;
+      drawIsoDiamond(ctx, sx, baseY + 1, TILE_W * 0.88, TILE_H * 0.88);
+      ctx.fillStyle = fallow ? '#7d6138' : '#c89b32';
+      ctx.fill();
+      ctx.strokeStyle = fallow ? '#a58a5d' : '#e7c35a';
       ctx.lineWidth = 1.6;
       for (let i = -2; i <= 2; i++) {
-        const sway = Math.sin(timeSec * 2.5 + i + b.id) * 1.2;
+        const sway = Math.sin(timeSec * 2.5 + i + b.id) * (fallow ? 0.2 : 1.2);
         ctx.beginPath();
         ctx.moveTo(sx - 12 + i * 4, baseY + 12 + i * 2);
-        ctx.lineTo(sx + 6 + i * 4 + sway, baseY + 20 + i * 2);
+        ctx.lineTo(sx + 6 + i * 4 + sway, baseY + (fallow ? 15 : 20) + i * 2);
         ctx.stroke();
       }
       drawIsoBox(ctx, sx - 10, baseY + 5, 18, 9, 8, '#dfd2b8', '#b0a186', '#cbbca0');
@@ -810,15 +861,18 @@ interface LayerCache {
   minX: number;
   minY: number;
   key: string;
+  opacity?: number;
 }
 
 let terrainCache: LayerCache | null = null;
 let roadCache: LayerCache | null = null;
+let fogCache: LayerCache | null = null;
 
 /** Drops cached layers so a different save is never drawn with stale terrain or roads. */
 export function invalidateTerrainCache(): void {
   terrainCache = null;
   roadCache = null;
+  fogCache = null;
 }
 
 function createLayerCanvas(
@@ -855,11 +909,14 @@ function createLayerCanvas(
 }
 
 function getOrBuildTerrainCache(world: WorldState): LayerCache {
-  const key = `${world.seed}:${world.width}x${world.height}`;
+  const key = `${world.seed}:${world.width}x${world.height}:${world.fogVersion ?? 0}`;
   if (terrainCache?.key === key) return terrainCache;
-  const layer = createLayerCanvas(world, (ctx, tile, sx, sy) =>
-    drawTerrainTile(ctx, tile, sx, sy, 0),
-  );
+  const layer = createLayerCanvas(world, (ctx, tile, sx, sy) => {
+    // Hidden terrain is omitted entirely: rocks and tree canopies are taller than
+    // a flat fog diamond and would otherwise poke through the unexplored area.
+    if (!tile.discovered) return;
+    drawTerrainTile(ctx, tile, sx, sy, 0);
+  });
   layer.key = key;
   terrainCache = layer;
   return layer;
@@ -873,6 +930,108 @@ function getOrBuildRoadCache(world: WorldState): LayerCache {
   });
   layer.key = key;
   roadCache = layer;
+  return layer;
+}
+
+let fogPatternSource: HTMLCanvasElement | null = null;
+
+/** A soft, seamlessly repeating cloud texture so fog is not a flat slate plane. */
+function getFogPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
+  if (!fogPatternSource) {
+    const size = 256;
+    const texture = document.createElement('canvas');
+    texture.width = size;
+    texture.height = size;
+    const tctx = texture.getContext('2d');
+    if (!tctx) return null;
+    tctx.fillStyle = '#2b3b43';
+    tctx.fillRect(0, 0, size, size);
+    for (let i = 0; i < 34; i++) {
+      const x = (i * 97 + 31) % size;
+      const y = (i * 53 + 71) % size;
+      const radius = 26 + ((i * 37) % 42);
+      const glow = tctx.createRadialGradient(x, y, 0, x, y, radius);
+      glow.addColorStop(0, 'rgba(176, 198, 196, 0.16)');
+      glow.addColorStop(0.55, 'rgba(140, 165, 164, 0.08)');
+      glow.addColorStop(1, 'rgba(140, 165, 164, 0)');
+      tctx.fillStyle = glow;
+      tctx.beginPath();
+      tctx.arc(x, y, radius, 0, Math.PI * 2);
+      tctx.fill();
+      // Wrap the puff across the seam for a tileable texture.
+      if (x < radius || x > size - radius || y < radius || y > size - radius) {
+        for (const ox of [-size, 0, size]) {
+          for (const oy of [-size, 0, size]) {
+            if (ox === 0 && oy === 0) continue;
+            const wrapped = tctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, radius);
+            wrapped.addColorStop(0, 'rgba(176, 198, 196, 0.16)');
+            wrapped.addColorStop(1, 'rgba(140, 165, 164, 0)');
+            tctx.fillStyle = wrapped;
+            tctx.beginPath();
+            tctx.arc(x + ox, y + oy, radius, 0, Math.PI * 2);
+            tctx.fill();
+          }
+        }
+      }
+    }
+    fogPatternSource = texture;
+  }
+  return ctx.createPattern(fogPatternSource, 'repeat');
+}
+
+function getOrBuildFogCache(world: WorldState): LayerCache {
+  const key = `${world.seed}:${world.width}x${world.height}:${world.fogVersion ?? 0}`;
+  if (fogCache?.key === key) return fogCache;
+
+  // Opaque tile fills first so overlaps never create a checkerboard.
+  const layer = createLayerCanvas(world, (ctx, tile, sx, sy) => {
+    if (tile.discovered) return;
+    // Slight overlap hides antialiased seams between neighbouring diamonds.
+    drawIsoDiamond(ctx, sx, sy, TILE_W * 1.04, TILE_H * 1.04);
+    ctx.fillStyle = '#2b3b43';
+    ctx.fill();
+  });
+
+  const lctx = layer.canvas.getContext('2d');
+  if (lctx) {
+    // Paint a single continuous cloud pattern clipped to the fog silhouette.
+    lctx.save();
+    lctx.globalCompositeOperation = 'source-in';
+    const clouds = getFogPattern(lctx);
+    if (clouds) {
+      lctx.fillStyle = clouds;
+      lctx.fillRect(0, 0, layer.canvas.width, layer.canvas.height);
+    }
+    lctx.restore();
+
+    // A warm rim is drawn once, after the merged fog mask.
+    lctx.save();
+    lctx.translate(-layer.minX, -layer.minY);
+    lctx.strokeStyle = 'rgba(212, 166, 86, 0.5)';
+    lctx.lineWidth = 1.6;
+    for (const tile of world.tiles) {
+      if (tile.discovered) continue;
+      const neighbors = [
+        [tile.x - 1, tile.y],
+        [tile.x + 1, tile.y],
+        [tile.x, tile.y - 1],
+        [tile.x, tile.y + 1],
+      ];
+      const touchesKnown = neighbors.some(([nx, ny]) => {
+        if (nx < 0 || ny < 0 || nx >= world.width || ny >= world.height) return false;
+        return world.tiles[getTileIndex(nx, ny, world.width)].discovered;
+      });
+      if (!touchesKnown) continue;
+      const iso = gridToIso(tile.x, tile.y);
+      drawIsoDiamond(lctx, iso.x, iso.y, TILE_W * 1.04, TILE_H * 1.04);
+      lctx.stroke();
+    }
+    lctx.restore();
+  }
+
+  layer.key = key;
+  layer.opacity = 0.94;
+  fogCache = layer;
   return layer;
 }
 
@@ -891,6 +1050,8 @@ function blitLayer(
   const srcW = srcRight - srcX;
   const srcH = srcBottom - srcY;
   if (srcW <= 0 || srcH <= 0) return;
+  ctx.save();
+  ctx.globalAlpha = layer.opacity ?? 1;
   ctx.drawImage(
     layer.canvas,
     srcX,
@@ -902,6 +1063,7 @@ function blitLayer(
     srcW,
     srcH,
   );
+  ctx.restore();
 }
 
 export function renderWorld(
@@ -950,21 +1112,32 @@ export function renderWorld(
     }
   }
 
+  // 1b. Unexplored land: drawn over terrain and water so nothing leaks through the fog.
+  blitLayer(ctx, getOrBuildFogCache(world), viewLeft, viewTop, viewW, viewH);
+
   // 2. Service radius overlay for selected building or active build tool
   if (toolMode.kind === 'build') {
     const def = BUILDINGS[toolMode.buildingType];
-    if (def.serviceRadius && hoverTile) {
+    const radius = def.revealRadius ?? def.serviceRadius;
+    if (radius && hoverTile) {
       const cx = hoverTile.gx + (def.size - 1) * 0.5;
       const cy = hoverTile.gy + (def.size - 1) * 0.5;
-      drawServiceRadiusOverlay(ctx, cx, cy, def.serviceRadius, '#e8bc55');
+      drawServiceRadiusOverlay(ctx, cx, cy, radius, def.revealRadius ? '#e6c76a' : '#e8bc55');
     }
   } else if (selectedBuildingId !== null) {
     const sel = world.buildings.find((b) => b.id === selectedBuildingId);
     if (sel) {
       const def = BUILDINGS[sel.type];
-      if (def.serviceRadius) {
+      const radius = def.revealRadius ?? def.serviceRadius;
+      if (radius) {
         const center = getBuildingCenter(sel);
-        drawServiceRadiusOverlay(ctx, center.x, center.y, def.serviceRadius, '#72c5d8');
+        drawServiceRadiusOverlay(
+          ctx,
+          center.x,
+          center.y,
+          radius,
+          def.revealRadius ? '#e6c76a' : '#72c5d8',
+        );
       }
     }
   }

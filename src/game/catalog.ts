@@ -27,6 +27,9 @@ export const RESOURCE_ORDER: ResourceId[] = [
   'pottery',
 ];
 
+export const WHEAT_HARVESTS_PER_SOWING = 10;
+export const WHEAT_SOW_COST = 1;
+
 export const VICTORY_GOALS: VictoryGoals = {
   targetPopulation: 150,
   targetCives: 60,
@@ -159,6 +162,21 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     description: 'Corazón cívico de la ciudad. Requisito clave del Senado.',
     hotkey: '7',
   },
+  watchtower: {
+    type: 'watchtower',
+    name: 'Torre de Vigía',
+    latinSubtitle: 'Turris Speculatoria',
+    category: 'civic',
+    size: 1,
+    costDenarii: 80,
+    costWood: 5,
+    costStone: 7,
+    upkeepPerMin: 4,
+    revealRadius: 8,
+    needsRoad: true,
+    description:
+      'Otea el horizonte y despeja la niebla en un radio amplio. Abre calzadas hacia yacimientos lejanos.',
+  },
   wheat_farm: {
     type: 'wheat_farm',
     name: 'Granja de Trigo',
@@ -173,9 +191,10 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     produces: 'wheat',
     workerNeed: 2,
     cycleSeconds: 7,
-    batchOutput: 1,
+    batchOutput: 2,
     needsRoad: true,
-    description: 'Produce Trigo sobre tierra fértil y lo envía en carreta al Molino.',
+    description:
+      'Siembra Trigo sobre tierra fértil: cada siembra rinde varias cosechas y luego el campo queda en barbecho.',
     hotkey: '8',
   },
   mill: {
@@ -268,7 +287,8 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     cycleSeconds: 6,
     batchOutput: 1,
     needsRoad: true,
-    description: 'Tala Madera en bosques para construcción continua.',
+    description:
+      'Tala Madera de un bosque finito. Cuando se agota, el bosque desaparece y hay que buscar otro.',
   },
   stone_quarry: {
     type: 'stone_quarry',
@@ -286,7 +306,8 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     cycleSeconds: 8,
     batchOutput: 1,
     needsRoad: true,
-    description: 'Extrae Piedra en yacimientos rocosos para obras públicas.',
+    description:
+      'Extrae Piedra de un yacimiento finito. Cuando se agota, el filón se convierte en terreno baldío.',
   },
   clay_pit: {
     type: 'clay_pit',
@@ -304,7 +325,8 @@ export const BUILDINGS: Record<BuildingType, BuildingDef> = {
     cycleSeconds: 7,
     batchOutput: 1,
     needsRoad: true,
-    description: 'Extrae Arcilla en depósitos ribereños para la Alfarería.',
+    description:
+      'Extrae Arcilla de un depósito finito. Cuando se agota, la veta queda agotada para siempre.',
   },
   pottery: {
     type: 'pottery',
@@ -339,7 +361,7 @@ export const BUILD_MENU_GROUPS: Array<{
   {
     category: 'civic',
     label: 'Vivienda y Civismo',
-    items: ['house_liberti', 'fountain', 'temple', 'forum'],
+    items: ['house_liberti', 'fountain', 'temple', 'forum', 'watchtower'],
   },
   {
     category: 'food',
@@ -354,17 +376,19 @@ export const BUILD_MENU_GROUPS: Array<{
 ];
 
 export const ALERT_HINTS: Record<string, string> = {
-  on_fire: 'Extingue el incendio desde el inspector.',
+  on_fire: 'Extingue el incendio desde el inspector o el edificio quedará destruido.',
   no_road: 'Prolonga una calzada hasta la puerta del edificio.',
   no_input: 'Lleva la materia prima al taller con carretas desde el Horreum.',
   output_full: 'Conecta el edificio a un Horreum o a su siguiente taller.',
   no_warehouse: 'Construye un Horreum conectado para almacenar la producción.',
   no_water: 'Construye una Fuente a menos de 6 casillas de la vivienda.',
   no_market: 'Construye un Mercado a menos de 8 casillas de la vivienda.',
-  no_bread: 'Abastece el Mercado con Pan de la Panadería.',
+  no_bread: 'Sin Pan la población empieza a morir. Abastece el Mercado desde la Panadería.',
   no_wine: 'El Mercado necesita Vino y no queda en el Horreum.',
   no_pottery: 'El Mercado necesita Cerámica y no queda en el Horreum.',
   no_temple: 'Construye un Templo o un Foro cerca de la Insula.',
+  depleted: 'Yacimiento agotado: busca otro bosque, cantera o veta y prolonga la calzada.',
+  needs_seed: 'Campo en barbecho: siémbralo de nuevo desde el inspector con 1 Trigo.',
 };
 
 export const ALERT_LABELS: Record<string, string> = {
@@ -379,4 +403,6 @@ export const ALERT_LABELS: Record<string, string> = {
   no_wine: 'Falta Vino en Mercado',
   no_pottery: 'Falta Cerámica en Mercado',
   no_temple: 'Falta Templo o Foro cercano',
+  depleted: 'Yacimiento agotado',
+  needs_seed: 'Campo en barbecho',
 };

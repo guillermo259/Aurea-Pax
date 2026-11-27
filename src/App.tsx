@@ -9,7 +9,7 @@ import { PauseModal } from './components/PauseModal';
 import { TitleOverlay } from './components/TitleOverlay';
 import { ToastStack } from './components/ToastStack';
 import { romanAudio } from './game/audio';
-import { BUILDINGS } from './game/catalog';
+import { BUILDINGS, WHEAT_SOW_COST } from './game/catalog';
 import { normalizeDayTime } from './game/dayCycle';
 import {
   CameraState,
@@ -39,6 +39,7 @@ import {
   extinguishFire,
   placeBuilding,
   recomputeStaticStatuses,
+  sowWheatFarm,
   stepSimulation,
   upgradeAllReadyHouses,
   upgradeHouse,
@@ -962,6 +963,24 @@ export default function App() {
     }
   };
 
+  const handleSowFromInspector = (id: number) => {
+    if (sowWheatFarm(worldRef.current, id)) {
+      romanAudio.playBuild(false);
+      syncHudNow();
+    } else {
+      pushToasts([
+        {
+          kind: 'resource_shortage',
+          severity: 'warning',
+          title: 'Sin trigo para sembrar',
+          message: `Necesitas ${WHEAT_SOW_COST} Trigo en el Horreum para volver a sembrar el campo.`,
+          dedupeKey: 'sow_no_wheat',
+          durationMs: 4000,
+        },
+      ]);
+    }
+  };
+
   const handleZoomBy = useCallback((factor: number) => {
     cameraRef.current.zoom = Math.min(2.2, Math.max(0.65, cameraRef.current.zoom * factor));
   }, []);
@@ -1080,6 +1099,7 @@ export default function App() {
           }}
           onUpgradeBuilding={handleUpgradeFromInspector}
           onExtinguishFire={handleExtinguishFromInspector}
+          onSowWheat={handleSowFromInspector}
           onDemolishBuilding={requestDemolish}
         />
       )}

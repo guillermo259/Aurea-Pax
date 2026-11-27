@@ -1,4 +1,4 @@
-import { BUILDINGS } from './catalog';
+import { BUILDINGS, WHEAT_HARVESTS_PER_SOWING } from './catalog';
 import { PlacedBuilding, ResourceId, TerrainKind, Tile, WorldState } from './types';
 
 function mulberry32(seed: number): () => number {
@@ -65,6 +65,56 @@ export function inBounds(x: number, y: number, width: number, height: number): b
   return x >= 0 && y >= 0 && x < width && y < height;
 }
 
+/**
+ * Extraction units stored in a natural tile. Near the starting valley the
+ * deposits are thin; the rich seams lie beyond the fog, so a growing colony
+ * must eventually push roads and watchtowers toward the frontier.
+ */
+export function defaultTileReserve(
+  terrain: TerrainKind,
+  x: number,
+  y: number,
+  seed: number,
+): number {
+  const distance = Math.hypot(x - 19, y - 24);
+  const richness = distance > 14 ? 1.8 : distance > 9 ? 1.25 : 1;
+  if (terrain === 'forest') return Math.round((90 + hash2d(x, y, seed) * 40) * richness);
+  if (terrain === 'stone') {
+    return Math.round((70 + hash2d(x, y, seed + 31) * 30) * richness);
+  }
+  if (terrain === 'clay') return Math.round((80 + hash2d(x, y, seed + 67) * 30) * richness);
+  return 0;
+}
+
+/** Lifts the fog in a circle and bumps fogVersion so the cached fog layer refreshes. */
+export function revealAround(
+  world: WorldState,
+  centerX: number,
+  centerY: number,
+  radius: number,
+): boolean {
+  const minX = Math.max(0, Math.floor(centerX - radius));
+  const maxX = Math.min(world.width - 1, Math.ceil(centerX + radius));
+  const minY = Math.max(0, Math.floor(centerY - radius));
+  const maxY = Math.min(world.height - 1, Math.ceil(centerY + radius));
+  const radiusSq = radius * radius;
+  let changed = false;
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const dx = x - centerX;
+      const dy = y - centerY;
+      if (dx * dx + dy * dy > radiusSq) continue;
+      const tile = world.tiles[getTileIndex(x, y, world.width)];
+      if (!tile.discovered) {
+        tile.discovered = true;
+        changed = true;
+      }
+    }
+  }
+  if (changed) world.fogVersion += 1;
+  return changed;
+}
+
 export function createBuildingRecord(
   id: number,
   type: PlacedBuilding['type'],
@@ -94,7 +144,10 @@ export function createBuildingRecord(
     hasPottery: false,
     upgradeReady: false,
     onFireTimer: 0,
+    starvationTimer: 0,
     alerts: [],
+    sown: type === 'wheat_farm' ? true : undefined,
+    harvestsLeft: type === 'wheat_farm' ? WHEAT_HARVESTS_PER_SOWING : 0,
     animSeed: seedVal,
   };
 }
@@ -184,6 +237,8 @@ export function createStarterWorld(seed = 11701): WorldState {
         buildingId: null,
         isRoad: false,
         variant: Math.floor(rand() * 4),
+        discovered: false,
+        reserve: 0,
       };
     }
   }
@@ -225,6 +280,21 @@ export function createStarterWorld(seed = 11701): WorldState {
   paintCluster(15, 13, 1.7, 'stone'); // Quarry outcrop north-west
   paintCluster(22, 18, 2.0, 'forest'); // Timber grove north-east
 
+  // Remote, fogged resource grounds: the reward for road-building and watchtowers.
+  paintCluster(8, 8, 2.4, 'forest');
+  paintCluster(10, 12, 1.8, 'stone');
+  paintCluster(33, 9, 2.2, 'stone');
+  paintCluster(33, 18, 2.0, 'forest');
+  paintCluster(35, 29, 2.0, 'clay');
+  paintCluster(8, 34, 2.2, 'fertile');
+
+  // Assign finite reserves after all terrain painting has finished.
+  for (const tile of tiles) {
+    if (tile.terrain === 'forest' || tile.terrain === 'stone' || tile.terrain === 'clay') {
+      tile.reserve = defaultTileReserve(tile.terrain, tile.x, tile.y, seed);
+    }
+  }
+
   const world: WorldState = {
     seed,
     width,
@@ -243,6 +313,7 @@ export function createStarterWorld(seed = 11701): WorldState {
       ...emptyResourceRecord(),
       wood: 45,
       stone: 26,
+      wheat: 6,
       bread: 14,
     },
     prodPerMin: emptyResourceRecord(),
@@ -276,6 +347,7 @@ export function createStarterWorld(seed = 11701): WorldState {
     _producedInWindow: emptyResourceRecord(),
     _consumedInWindow: emptyResourceRecord(),
     _notificationCooldowns: {},
+    fogVersion: 1,
   };
 
   // Via Principalis (main starter road)
@@ -306,6 +378,17 @@ export function createStarterWorld(seed = 11701): WorldState {
       placeInitialStructure(world, 'road', x, 19);
     }
     woodcutter.outputBuffer = 1;
+  }
+
+  // The settled valley starts visible; the rest of the island is terra incognita.
+  revealAround(world, 19, 24, 10);
+  for (const building of world.buildings) {
+    revealAround(
+      world,
+      building.x + (building.size - 1) * 0.5,
+      building.y + (building.size - 1) * 0.5,
+      BUILDINGS[building.type].revealRadius ?? 3,
+    );
   }
 
   return world;

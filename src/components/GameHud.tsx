@@ -1,30 +1,39 @@
 import React from 'react';
 import {
-  ArrowUpCircle,
-  BookOpen,
-  Hammer,
-  ListChecks,
-  MousePointer,
-  Pause,
-  Play,
-  FastForward,
-  Save,
-  Volume2,
-  VolumeX,
-  Menu,
-  Sun,
-  CloudRain,
-  Wind,
-  Sunrise,
-  Sunset,
-  Moon,
-  ZoomIn,
-  ZoomOut,
-} from 'lucide-react';
+  ArrowUp02Icon,
+  BookOpen01Icon,
+  CheckListIcon,
+  CheckmarkCircle02Icon,
+  CloudFastWindIcon,
+  CloudRainIcon,
+  Coins01Icon,
+  CourtHouseIcon,
+  Cursor01Icon,
+  FastForwardIcon,
+  FloppyDiskIcon,
+  Hammer01Icon,
+  Menu01Icon,
+  Moon02Icon,
+  PauseIcon,
+  PlayIcon,
+  SparklesIcon,
+  Sun03Icon,
+  SunriseIcon,
+  SunsetIcon,
+  UserGroupIcon,
+  UserSettingsIcon,
+  UserStarIcon,
+  VolumeHighIcon,
+  VolumeMute01Icon,
+  ZoomInAreaIcon,
+  ZoomOutAreaIcon,
+} from '@hugeicons/core-free-icons';
 import { BUILDINGS, BUILD_MENU_GROUPS, RESOURCE_META, VICTORY_GOALS } from '../game/catalog';
 import { getDayPhaseInfo } from '../game/dayCycle';
 import { BuildCategory, BuildingType, HudSnapshot, ToolMode } from '../game/types';
+import { HugeIcon } from './HugeIcon';
 import { BuildingIcon, ResourceIcon } from './RomanIcons';
+import { CATEGORY_ICONS, CATEGORY_SHORT_LABELS } from './uiIcons';
 
 interface GameHudProps {
   hud: HudSnapshot;
@@ -87,8 +96,17 @@ export const GameHud: React.FC<GameHudProps> = ({
       <div className="pointer-events-auto w-full flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 px-3 py-1.5 rounded-lg bg-[#191511]/95 border border-[#b78e4a]/35 shadow-xl">
         {/* Left: Denarii, Population & Stock */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-[11px] uppercase tracking-wider text-[#b9aa94]">Denarios</span>
+          <div
+            className="flex items-center gap-1.5"
+            title={`Denarios: ${hud.denarii} (${hud.netDenariiPerMin >= 0 ? '+' : ''}${hud.netDenariiPerMin}/min)`}
+            aria-label={`Denarios: ${hud.denarii}. Balance: ${hud.netDenariiPerMin >= 0 ? '+' : ''}${hud.netDenariiPerMin} por minuto.`}
+          >
+            <HugeIcon
+              icon={Coins01Icon}
+              size={16}
+              className="text-[#e6b85c] shrink-0"
+              aria-hidden="true"
+            />
             <span className="font-mono-num text-lg font-semibold text-[#f3c667]">
               {hud.denarii}
             </span>
@@ -105,8 +123,16 @@ export const GameHud: React.FC<GameHudProps> = ({
             |
           </span>
 
-          <div className="flex items-baseline gap-1.5">
-            <span className="text-[11px] uppercase tracking-wider text-[#b9aa94]">Pobl.</span>
+          <div
+            className="flex items-center gap-1.5"
+            title={`Población: ${hud.totalPopulation} (${hud.populationLiberti} libertos, ${hud.populationCives} civiles)`}
+          >
+            <HugeIcon
+              icon={UserGroupIcon}
+              size={16}
+              className="text-[#cbbd9f] shrink-0"
+              aria-hidden="true"
+            />
             <span className="font-mono-num text-lg font-semibold text-[#f6efe2]">
               {hud.totalPopulation}
             </span>
@@ -145,16 +171,15 @@ export const GameHud: React.FC<GameHudProps> = ({
             title={`Hora del día: ${dayInfo.clockText} (${dayInfo.label})`}
           >
             {dayInfo.phase === 'night' ? (
-              <Moon className="w-3.5 h-3.5 text-[#8ea8f0]" />
+              <HugeIcon icon={Moon02Icon} size={15} className="text-[#8ea8f0]" aria-hidden="true" />
             ) : dayInfo.phase === 'dusk' ? (
-              <Sunset className="w-3.5 h-3.5 text-[#e88754]" />
+              <HugeIcon icon={SunsetIcon} size={15} className="text-[#e88754]" aria-hidden="true" />
             ) : dayInfo.phase === 'dawn' ? (
-              <Sunrise className="w-3.5 h-3.5 text-[#f2aa6b]" />
+              <HugeIcon icon={SunriseIcon} size={15} className="text-[#f2aa6b]" aria-hidden="true" />
             ) : (
-              <Sun className="w-3.5 h-3.5 text-[#f3ca64]" />
+              <HugeIcon icon={Sun03Icon} size={15} className="text-[#f3ca64]" aria-hidden="true" />
             )}
             <span className="font-mono-num text-[#f3eadb]">{dayInfo.clockText}</span>
-            <span className="hidden 2xl:inline text-[#b9aa94]">{dayInfo.label}</span>
           </div>
 
           <div
@@ -163,21 +188,16 @@ export const GameHud: React.FC<GameHudProps> = ({
           >
             {hud.weatherKind === 'rain' ? (
               <>
-                <CloudRain className="w-3.5 h-3.5 text-[#7cc6e8]" />
-                <span className="text-[#a8daf2]">Lluvia</span>
+                <HugeIcon icon={CloudRainIcon} size={15} className="text-[#7cc6e8]" aria-hidden="true" />
                 <span className="font-mono-num text-[#89c983]">+12%</span>
               </>
             ) : hud.weatherKind === 'wind' ? (
               <>
-                <Wind className="w-3.5 h-3.5 text-[#d8b46c]" />
-                <span className="text-[#e6ca8d]">Viento</span>
+                <HugeIcon icon={CloudFastWindIcon} size={15} className="text-[#d8b46c]" aria-hidden="true" />
                 <span className="font-mono-num text-[#e5986f]">-10%</span>
               </>
             ) : (
-              <>
-                <Sun className="w-3.5 h-3.5 text-[#f0c75e]" />
-                <span className="text-[#d6c9b4]">Despejado</span>
-              </>
+              <HugeIcon icon={Sun03Icon} size={15} className="text-[#f0c75e]" aria-hidden="true" />
             )}
           </div>
 
@@ -185,32 +205,38 @@ export const GameHud: React.FC<GameHudProps> = ({
             className="hidden lg:flex items-center gap-1.5 text-xs text-[#d6c9b4] pr-2 border-r border-[#5e5140]/60 whitespace-nowrap"
             title={`Progreso del Senado: ${hud.totalPopulation}/${VICTORY_GOALS.targetPopulation} habitantes · ${hud.populationCives}/${VICTORY_GOALS.targetCives} civiles`}
           >
-            <span className="font-mono-num text-[#e6d6b8]">
-              {hud.totalPopulation}/{VICTORY_GOALS.targetPopulation}
+            <span className="flex items-center gap-1" title="Población total / objetivo">
+              <HugeIcon icon={UserGroupIcon} size={14} className="text-[#cbbd9f]" aria-hidden="true" />
+              <span className="font-mono-num text-[#e6d6b8]">
+                {hud.totalPopulation}/{VICTORY_GOALS.targetPopulation}
+              </span>
             </span>
-            <span aria-hidden="true">·</span>
-            <span className="font-mono-num">
-              {hud.populationCives}/{VICTORY_GOALS.targetCives}
-            </span>
-            <span aria-hidden="true">·</span>
-            <span className="hidden 2xl:inline" aria-hidden="true">
-              ·
+            <span className="flex items-center gap-1" title="Civiles / objetivo">
+              <HugeIcon icon={UserStarIcon} size={14} className="text-[#d8b46c]" aria-hidden="true" />
+              <span className="font-mono-num">
+                {hud.populationCives}/{VICTORY_GOALS.targetCives}
+              </span>
             </span>
             <span
-              className={`hidden 2xl:inline ${hud.hasForum ? 'text-[#89c983]' : 'text-[#b9aa94]'}`}
+              className="flex items-center"
+              title={hud.hasForum ? 'Foro construido' : 'Foro pendiente'}
+              aria-label={hud.hasForum ? 'Foro construido' : 'Foro pendiente'}
             >
-              {hud.hasForum ? 'Foro ✓' : 'Foro ✗'}
-            </span>
-            <span className="hidden 2xl:inline" aria-hidden="true">
-              ·
+              <HugeIcon
+                icon={CourtHouseIcon}
+                size={14}
+                className={hud.hasForum ? 'text-[#89c983]' : 'text-[#b9aa94]'}
+                aria-hidden="true"
+              />
             </span>
             <span
-              className={`hidden 2xl:inline ${
+              className={`flex items-center gap-1 ${
                 hud.staffingRatio < 1 ? 'text-[#e5986f]' : 'text-[#89c983]'
               }`}
               title="Mano de obra disponible para talleres (población × 0,75 / demanda)"
             >
-              Obreros {Math.round(hud.staffingRatio * 100)}%
+              <HugeIcon icon={UserSettingsIcon} size={14} aria-hidden="true" />
+              <span className="font-mono-num">{Math.round(hud.staffingRatio * 100)}%</span>
             </span>
           </div>
 
@@ -225,7 +251,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               }}
               className="p-1 rounded text-[#d1c5b4] hover:text-[#fff6e8] cursor-pointer"
             >
-              <ZoomOut className="w-3.5 h-3.5" />
+              <HugeIcon icon={ZoomOutAreaIcon} size={15} aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -236,7 +262,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               }}
               className="p-1 rounded text-[#d1c5b4] hover:text-[#fff6e8] cursor-pointer"
             >
-              <ZoomIn className="w-3.5 h-3.5" />
+              <HugeIcon icon={ZoomInAreaIcon} size={15} aria-hidden="true" />
             </button>
           </div>
 
@@ -255,7 +281,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                   : 'text-[#d1c5b4] hover:text-[#fff6e8]'
               }`}
             >
-              <Pause className="w-3.5 h-3.5" />
+              <HugeIcon icon={PauseIcon} size={15} aria-hidden="true" />
             </button>
             {([1, 2, 3] as const).map((spd) => (
               <button
@@ -275,11 +301,11 @@ export const GameHud: React.FC<GameHudProps> = ({
                 {spd === 3 ? (
                   <span className="inline-flex items-center gap-0.5">
                     3x
-                    <FastForward className="w-3 h-3" />
+                    <HugeIcon icon={FastForwardIcon} size={12} aria-hidden="true" />
                   </span>
                 ) : spd === 1 ? (
                   <span className="inline-flex items-center gap-0.5">
-                    <Play className="w-3 h-3" />
+                    <HugeIcon icon={PlayIcon} size={12} aria-hidden="true" />
                     1x
                   </span>
                 ) : (
@@ -291,54 +317,68 @@ export const GameHud: React.FC<GameHudProps> = ({
 
           <button
             type="button"
+            aria-label={`Abrir cuentas${hud.alerts.length > 0 ? ` (${hud.alerts.length} avisos)` : ''}`}
+            title="Cuentas y avisos"
             onClick={(e) => {
               e.currentTarget.blur();
               onToggleLedger();
             }}
-            className="px-2.5 py-1 rounded text-xs font-medium bg-[#28221b] text-[#f3eadb] border border-[#b78e4a]/40 hover:bg-[#342c23] flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+            className="relative p-1.5 rounded bg-[#28221b] text-[#f3eadb] border border-[#b78e4a]/40 hover:bg-[#342c23] flex items-center justify-center cursor-pointer shrink-0"
           >
-            <BookOpen className="w-3.5 h-3.5 text-[#d4a656]" />
-            <span>Cuentas</span>
+            <HugeIcon icon={BookOpen01Icon} size={15} className="text-[#d4a656]" aria-hidden="true" />
             {hud.alerts.length > 0 && (
-              <span className="font-mono-num text-[#f08b78]">({hud.alerts.length})</span>
+              <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-[#7d2f26] text-[#ffd9d2] font-mono-num text-[9px] leading-4 text-center">
+                {hud.alerts.length}
+              </span>
             )}
           </button>
 
           <button
             type="button"
             aria-label="Guardar partida"
+            title={saveFeedback ?? 'Guardar partida'}
             onClick={(e) => {
               e.currentTarget.blur();
               onSaveNow();
             }}
-            className="px-2.5 py-1 rounded text-xs font-medium bg-[#28221b] text-[#f3eadb] border border-[#b78e4a]/35 hover:bg-[#342c23] flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0"
+            className="p-1.5 rounded bg-[#28221b] text-[#f3eadb] border border-[#b78e4a]/35 hover:bg-[#342c23] flex items-center justify-center cursor-pointer shrink-0"
           >
-            <Save className="w-3.5 h-3.5 text-[#d4a656]" />
-            <span>{saveFeedback ?? 'Guardar'}</span>
+            <HugeIcon
+              icon={saveFeedback ? CheckmarkCircle02Icon : FloppyDiskIcon}
+              size={15}
+              className={saveFeedback ? 'text-[#89c983]' : 'text-[#d4a656]'}
+              aria-hidden="true"
+            />
           </button>
 
           <button
             type="button"
             aria-label={muted ? 'Activar sonido' : 'Silenciar sonido'}
+            title={muted ? 'Activar sonido' : 'Silenciar sonido'}
             onClick={(e) => {
               e.currentTarget.blur();
               onToggleMute();
             }}
             className="p-1.5 rounded bg-[#28221b] text-[#d6c9b4] border border-[#b78e4a]/30 hover:text-[#fff6e8] cursor-pointer shrink-0"
           >
-            {muted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+            <HugeIcon
+              icon={muted ? VolumeMute01Icon : VolumeHighIcon}
+              size={15}
+              aria-hidden="true"
+            />
           </button>
 
           <button
             type="button"
             aria-label="Abrir menú de pausa"
+            title="Menú de pausa"
             onClick={(e) => {
               e.currentTarget.blur();
               onOpenPauseMenu();
             }}
             className="p-1.5 rounded bg-[#28221b] text-[#d6c9b4] border border-[#b78e4a]/30 hover:text-[#fff6e8] cursor-pointer shrink-0"
           >
-            <Menu className="w-3.5 h-3.5" />
+            <HugeIcon icon={Menu01Icon} size={15} aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -358,25 +398,32 @@ export const GameHud: React.FC<GameHudProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 pb-1.5 mb-2 border-b border-[#b78e4a]/20">
           <div className="flex w-full flex-wrap items-center gap-1 xl:w-auto">
             {BUILD_MENU_GROUPS.map((group) => {
-              const active = activeCategory === group.category && toolMode.kind === 'build';
+              const active = activeCategory === group.category;
+              const activeBuild = active && toolMode.kind === 'build';
               return (
                 <button
                   key={group.category}
                   type="button"
-                      onClick={(e) => {
+                  aria-label={group.label}
+                  aria-pressed={active}
+                  title={group.label}
+                  onClick={(e) => {
                     e.currentTarget.blur();
                     onSelectCategory(group.category);
                     if (toolMode.kind !== 'build') {
                       onSelectTool({ kind: 'build', buildingType: group.items[0] });
                     }
                   }}
-                  className={`px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
-                    active
-                      ? 'bg-[#c9953c] text-[#17120c] font-semibold'
-                      : 'bg-[#262019] text-[#d6c9b4] hover:bg-[#322a21] hover:text-[#fff5e4]'
+                  className={`px-2 py-1 rounded text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 border ${
+                    activeBuild
+                      ? 'bg-[#c9953c] text-[#17120c] font-semibold border-transparent'
+                      : active
+                        ? 'bg-[#2c241b] text-[#f0c977] border-[#c9953c]/45'
+                        : 'bg-[#262019] text-[#d6c9b4] border-transparent hover:bg-[#322a21] hover:text-[#fff5e4]'
                   }`}
                 >
-                  {group.label}
+                  <HugeIcon icon={CATEGORY_ICONS[group.category]} size={15} aria-hidden="true" />
+                  <span className="hidden lg:inline">{CATEGORY_SHORT_LABELS[group.category]}</span>
                 </button>
               );
             })}
@@ -386,34 +433,42 @@ export const GameHud: React.FC<GameHudProps> = ({
             {hud.readyUpgradeCount > 0 && (
               <button
                 type="button"
-                  onClick={(e) => {
+                aria-label={`Ascender ${hud.readyUpgradeCount} viviendas listas`}
+                title={`Ascender ${hud.readyUpgradeCount} viviendas listas`}
+                onClick={(e) => {
                   e.currentTarget.blur();
                   onUpgradeAll();
                 }}
                 className="px-2 py-1 rounded text-xs font-semibold bg-[#3a2f19] text-[#f4ca64] border border-[#d4a656]/50 hover:bg-[#4b3c20] flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
               >
-                <ArrowUpCircle className="w-3.5 h-3.5" />
-                <span>Ascender ({hud.readyUpgradeCount})</span>
+                <HugeIcon icon={ArrowUp02Icon} size={15} aria-hidden="true" />
+                <span className="font-mono-num">{hud.readyUpgradeCount}</span>
               </button>
             )}
 
             <button
               type="button"
+              aria-label={`Autoascenso ${hud.autoUpgradeHouses ? 'activado' : 'desactivado'}`}
+              aria-pressed={hud.autoUpgradeHouses}
+              title={`Autoascenso de viviendas: ${hud.autoUpgradeHouses ? 'activado' : 'desactivado'}`}
               onClick={(e) => {
                 e.currentTarget.blur();
                 onToggleAutoUpgrade();
               }}
-              className={`px-2 py-1 rounded text-xs font-medium border cursor-pointer whitespace-nowrap shrink-0 ${
+              className={`p-1.5 rounded border cursor-pointer shrink-0 ${
                 hud.autoUpgradeHouses
                   ? 'bg-[#2a3b26] text-[#a7e09b] border-[#669c5b]/50'
                   : 'bg-[#241e18] text-[#b9aa94] border-[#5e5140]/50 hover:text-[#f3eadb]'
               }`}
             >
-              Auto: {hud.autoUpgradeHouses ? 'Sí' : 'No'}
+              <HugeIcon icon={SparklesIcon} size={15} aria-hidden="true" />
             </button>
 
             <button
               type="button"
+              aria-label="Inspeccionar"
+              aria-pressed={toolMode.kind === 'inspect'}
+              title="Inspeccionar (Q)"
               onClick={(e) => {
                 e.currentTarget.blur();
                 onSelectTool({ kind: 'inspect' });
@@ -424,26 +479,31 @@ export const GameHud: React.FC<GameHudProps> = ({
                   : 'bg-[#262019] text-[#d6c9b4] hover:bg-[#322a21]'
               }`}
             >
-              <MousePointer className="w-3.5 h-3.5" />
-              <span>Inspeccionar [Q]</span>
+              <HugeIcon icon={Cursor01Icon} size={15} aria-hidden="true" />
+              <span className="text-[9px] font-mono-num opacity-70">Q</span>
             </button>
 
             <button
               type="button"
+              aria-label={`Objetivos: ${objectivesDone} de ${objectivesTotal}`}
+              title={`Objetivos: ${objectivesDone}/${objectivesTotal}`}
               onClick={(e) => {
                 e.currentTarget.blur();
                 onOpenObjectives();
               }}
               className="px-1.5 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 bg-[#262019] text-[#d6c9b4] hover:bg-[#322a21]"
             >
-              <ListChecks className="w-3.5 h-3.5" />
-              <span>
-                Objetivos {objectivesDone}/{objectivesTotal}
+              <HugeIcon icon={CheckListIcon} size={15} aria-hidden="true" />
+              <span className="font-mono-num text-[10px]">
+                {objectivesDone}/{objectivesTotal}
               </span>
             </button>
 
             <button
               type="button"
+              aria-label="Ascender estructura"
+              aria-pressed={toolMode.kind === 'upgrade'}
+              title="Ascender estructura (U)"
               onClick={(e) => {
                 e.currentTarget.blur();
                 onSelectTool({ kind: 'upgrade' });
@@ -454,12 +514,15 @@ export const GameHud: React.FC<GameHudProps> = ({
                   : 'bg-[#262019] text-[#d6c9b4] hover:bg-[#322a21]'
               }`}
             >
-              <ArrowUpCircle className="w-3.5 h-3.5" />
-              <span>Ascender [U]</span>
+              <HugeIcon icon={ArrowUp02Icon} size={15} aria-hidden="true" />
+              <span className="text-[9px] font-mono-num opacity-70">U</span>
             </button>
 
             <button
               type="button"
+              aria-label="Demoler estructura"
+              aria-pressed={toolMode.kind === 'demolish'}
+              title="Demoler estructura (X)"
               onClick={(e) => {
                 e.currentTarget.blur();
                 onSelectTool({ kind: 'demolish' });
@@ -470,8 +533,8 @@ export const GameHud: React.FC<GameHudProps> = ({
                   : 'bg-[#262019] text-[#d6c9b4] hover:bg-[#3b221e]'
               }`}
             >
-              <Hammer className="w-3.5 h-3.5" />
-              <span>Demoler [X]</span>
+              <HugeIcon icon={Hammer01Icon} size={15} aria-hidden="true" />
+              <span className="text-[9px] font-mono-num opacity-70">X</span>
             </button>
           </div>
         </div>
@@ -495,7 +558,8 @@ export const GameHud: React.FC<GameHudProps> = ({
                   e.currentTarget.blur();
                   onSelectTool({ kind: 'build', buildingType: bType });
                 }}
-                title={def.description}
+                title={`${def.description}${def.hotkey ? ` · Atajo ${def.hotkey}` : ''}`}
+                aria-label={`${def.name}. ${def.description}`}
                 className={`flex items-center gap-2.5 px-3 py-1.5 rounded border text-left transition-colors cursor-pointer shrink-0 ${
                   isSelected
                     ? 'bg-[#362c1c] border-[#e2b45d] text-[#fff6e5]'
@@ -504,18 +568,25 @@ export const GameHud: React.FC<GameHudProps> = ({
               >
                 <BuildingIcon type={bType} className="w-7 h-7 shrink-0" />
                 <div className="min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-semibold whitespace-nowrap">{def.name}</span>
-                    {def.hotkey && (
-                      <span className="text-[10px] font-mono-num text-[#b9aa94]">
-                        [{def.hotkey}]
+                  <div className="text-xs font-semibold whitespace-nowrap">{def.name}</div>
+                  <div
+                    className="flex items-center gap-1.5 text-[11px] font-mono-num text-[#cbbd9f] whitespace-nowrap"
+                    title={`Coste: ${def.costDenarii} denarios, ${def.costWood} madera, ${def.costStone} piedra`}
+                  >
+                    <HugeIcon icon={Coins01Icon} size={11} className="text-[#d8b46c]" aria-hidden="true" />
+                    {def.costDenarii}
+                    {def.costWood > 0 && (
+                      <span className="flex items-center gap-0.5">
+                        <ResourceIcon resource="wood" className="w-3.5 h-3.5" />
+                        {def.costWood}
                       </span>
                     )}
-                  </div>
-                  <div className="text-[11px] font-mono-num text-[#cbbd9f] whitespace-nowrap">
-                    {def.costDenarii}d
-                    {def.costWood > 0 ? ` · ${def.costWood}m` : ''}
-                    {def.costStone > 0 ? ` · ${def.costStone}p` : ''}
+                    {def.costStone > 0 && (
+                      <span className="flex items-center gap-0.5">
+                        <ResourceIcon resource="stone" className="w-3.5 h-3.5" />
+                        {def.costStone}
+                      </span>
+                    )}
                   </div>
                 </div>
               </button>
