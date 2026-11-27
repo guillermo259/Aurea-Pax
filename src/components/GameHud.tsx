@@ -84,9 +84,9 @@ export const GameHud: React.FC<GameHudProps> = ({
   return (
     <div className="fixed inset-0 z-10 pointer-events-none flex flex-col justify-between p-3">
       {/* Top Perimeter Resource & Senate Bar */}
-      <div className="pointer-events-auto w-full flex items-center justify-between gap-2 px-3 py-1.5 rounded-lg bg-[#191511]/95 border border-[#b78e4a]/35 shadow-xl overflow-x-auto">
+      <div className="pointer-events-auto w-full flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 px-3 py-1.5 rounded-lg bg-[#191511]/95 border border-[#b78e4a]/35 shadow-xl">
         {/* Left: Denarii, Population & Stock */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
           <div className="flex items-baseline gap-1.5">
             <span className="text-[11px] uppercase tracking-wider text-[#b9aa94]">Denarios</span>
             <span className="font-mono-num text-lg font-semibold text-[#f3c667]">
@@ -137,7 +137,7 @@ export const GameHud: React.FC<GameHudProps> = ({
         </div>
 
         {/* Right: Time + Weather + Goal progress + Speed + Utility Actions */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex w-full flex-wrap items-center justify-between gap-1 xl:ml-auto xl:w-auto xl:justify-end">
           <div
             data-testid="day-clock"
             data-day-phase={dayInfo.phase}
@@ -154,7 +154,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               <Sun className="w-3.5 h-3.5 text-[#f3ca64]" />
             )}
             <span className="font-mono-num text-[#f3eadb]">{dayInfo.clockText}</span>
-            <span className="text-[#b9aa94]">{dayInfo.label}</span>
+            <span className="hidden 2xl:inline text-[#b9aa94]">{dayInfo.label}</span>
           </div>
 
           <div
@@ -181,22 +181,33 @@ export const GameHud: React.FC<GameHudProps> = ({
             )}
           </div>
 
-          <div className="hidden lg:flex items-center gap-1.5 text-xs text-[#d6c9b4] pr-2 border-r border-[#5e5140]/60 whitespace-nowrap">
-            <span className="text-[#d4a656] font-medium">Senado:</span>
-            <span className="font-mono-num">
+          <div
+            className="hidden lg:flex items-center gap-1.5 text-xs text-[#d6c9b4] pr-2 border-r border-[#5e5140]/60 whitespace-nowrap"
+            title={`Progreso del Senado: ${hud.totalPopulation}/${VICTORY_GOALS.targetPopulation} habitantes · ${hud.populationCives}/${VICTORY_GOALS.targetCives} civiles`}
+          >
+            <span className="font-mono-num text-[#e6d6b8]">
               {hud.totalPopulation}/{VICTORY_GOALS.targetPopulation}
             </span>
             <span aria-hidden="true">·</span>
             <span className="font-mono-num">
-              {hud.populationCives}/{VICTORY_GOALS.targetCives} Civ
+              {hud.populationCives}/{VICTORY_GOALS.targetCives}
             </span>
             <span aria-hidden="true">·</span>
-            <span className={hud.hasForum ? 'text-[#89c983]' : 'text-[#b9aa94]'}>
+            <span className="hidden 2xl:inline" aria-hidden="true">
+              ·
+            </span>
+            <span
+              className={`hidden 2xl:inline ${hud.hasForum ? 'text-[#89c983]' : 'text-[#b9aa94]'}`}
+            >
               {hud.hasForum ? 'Foro ✓' : 'Foro ✗'}
             </span>
-            <span aria-hidden="true">·</span>
+            <span className="hidden 2xl:inline" aria-hidden="true">
+              ·
+            </span>
             <span
-              className={hud.staffingRatio < 1 ? 'text-[#e5986f]' : 'text-[#89c983]'}
+              className={`hidden 2xl:inline ${
+                hud.staffingRatio < 1 ? 'text-[#e5986f]' : 'text-[#89c983]'
+              }`}
               title="Mano de obra disponible para talleres (población × 0,75 / demanda)"
             >
               Obreros {Math.round(hud.staffingRatio * 100)}%
@@ -280,7 +291,6 @@ export const GameHud: React.FC<GameHudProps> = ({
 
           <button
             type="button"
-            tabIndex={-1}
             onClick={(e) => {
               e.currentTarget.blur();
               onToggleLedger();
@@ -296,7 +306,6 @@ export const GameHud: React.FC<GameHudProps> = ({
 
           <button
             type="button"
-            tabIndex={-1}
             aria-label="Guardar partida"
             onClick={(e) => {
               e.currentTarget.blur();
@@ -310,7 +319,6 @@ export const GameHud: React.FC<GameHudProps> = ({
 
           <button
             type="button"
-            tabIndex={-1}
             aria-label={muted ? 'Activar sonido' : 'Silenciar sonido'}
             onClick={(e) => {
               e.currentTarget.blur();
@@ -323,7 +331,6 @@ export const GameHud: React.FC<GameHudProps> = ({
 
           <button
             type="button"
-            tabIndex={-1}
             aria-label="Abrir menú de pausa"
             onClick={(e) => {
               e.currentTarget.blur();
@@ -347,9 +354,9 @@ export const GameHud: React.FC<GameHudProps> = ({
 
       {/* Bottom Perimeter Build Dock */}
       <div className="pointer-events-auto self-center w-full max-w-6xl rounded-lg bg-[#191511]/95 border border-[#b78e4a]/35 shadow-xl px-3 py-2">
-        {/* Row 1: Categories + Action Tools on single compact row */}
-        <div className="flex items-center justify-between gap-2 pb-1.5 mb-2 border-b border-[#b78e4a]/20 overflow-x-auto">
-          <div className="flex items-center gap-1 shrink-0">
+        {/* Row 1: Categories + Action Tools, wrapping instead of scrolling on narrow screens */}
+        <div className="flex flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 pb-1.5 mb-2 border-b border-[#b78e4a]/20">
+          <div className="flex w-full flex-wrap items-center gap-1 xl:w-auto">
             {BUILD_MENU_GROUPS.map((group) => {
               const active = activeCategory === group.category && toolMode.kind === 'build';
               return (
@@ -375,7 +382,7 @@ export const GameHud: React.FC<GameHudProps> = ({
             })}
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex w-full flex-wrap items-center gap-1 xl:ml-auto xl:w-auto">
             {hud.readyUpgradeCount > 0 && (
               <button
                 type="button"
@@ -411,7 +418,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 e.currentTarget.blur();
                 onSelectTool({ kind: 'inspect' });
               }}
-              className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
+              className={`px-1.5 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
                 toolMode.kind === 'inspect'
                   ? 'bg-[#c9953c] text-[#17120c] font-semibold'
                   : 'bg-[#262019] text-[#d6c9b4] hover:bg-[#322a21]'
@@ -427,11 +434,11 @@ export const GameHud: React.FC<GameHudProps> = ({
                 e.currentTarget.blur();
                 onOpenObjectives();
               }}
-              className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 bg-[#262019] text-[#d6c9b4] hover:bg-[#322a21]"
+              className="px-1.5 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 bg-[#262019] text-[#d6c9b4] hover:bg-[#322a21]"
             >
               <ListChecks className="w-3.5 h-3.5" />
               <span>
-                Objetivos ({objectivesDone}/{objectivesTotal})
+                Objetivos {objectivesDone}/{objectivesTotal}
               </span>
             </button>
 
@@ -441,7 +448,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 e.currentTarget.blur();
                 onSelectTool({ kind: 'upgrade' });
               }}
-              className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
+              className={`px-1.5 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
                 toolMode.kind === 'upgrade'
                   ? 'bg-[#c9953c] text-[#17120c] font-semibold'
                   : 'bg-[#262019] text-[#d6c9b4] hover:bg-[#322a21]'
@@ -457,7 +464,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 e.currentTarget.blur();
                 onSelectTool({ kind: 'demolish' });
               }}
-              className={`px-2 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
+              className={`px-1.5 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
                 toolMode.kind === 'demolish'
                   ? 'bg-[#c64635] text-[#fff6f4] font-semibold'
                   : 'bg-[#262019] text-[#d6c9b4] hover:bg-[#3b221e]'
@@ -470,7 +477,7 @@ export const GameHud: React.FC<GameHudProps> = ({
         </div>
 
         {/* Row 2: Building Selection Buttons */}
-        <div className="flex items-stretch gap-2 overflow-x-auto roman-scroll pb-0.5">
+        <div className="flex flex-wrap items-stretch gap-2">
           {currentGroup.items.map((bType: BuildingType) => {
             const def = BUILDINGS[bType];
             const isSelected =

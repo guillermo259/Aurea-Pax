@@ -43,6 +43,7 @@ export const ObjectivesModal: React.FC<ObjectivesModalProps> = ({ world, onClose
           </div>
           <button
             type="button"
+            autoFocus
             aria-label="Cerrar objetivos"
             onClick={onClose}
             className="p-1.5 text-[#b9aa94] hover:text-white cursor-pointer"

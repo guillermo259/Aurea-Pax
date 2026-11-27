@@ -104,7 +104,8 @@ export type NotificationKind =
   | 'fire'
   | 'resource_shortage'
   | 'treasury_low'
-  | 'road_disconnected';
+  | 'road_disconnected'
+  | 'save_recovered';
 
 export type NotificationSeverity = 'critical' | 'warning';
 

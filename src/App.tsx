@@ -350,20 +350,29 @@ export default function App() {
       setLedgerOpen(false);
       setObjectivesOpen(false);
       setConfirmRequest(null);
-      setSaveNotice(
-        result.recovered
-          ? 'La partida principal estaba dañada: se recuperó el autoguardado anterior.'
-          : null,
-      );
+      setSaveNotice(null);
       clearAllToasts();
       applyPhase('playing');
       romanAudio.playClick();
+      if (result.recovered) {
+        pushToasts([
+          {
+            kind: 'save_recovered',
+            severity: 'warning',
+            title: 'Partida recuperada',
+            message:
+              'La copia principal estaba dañada; se cargó el autoguardado anterior. Guarda de nuevo para fijar la partida.',
+            dedupeKey: 'save_recovered',
+            durationMs: 8000,
+          },
+        ]);
+      }
     } else if (result.status === 'corrupt') {
       setSaveNotice(result.message);
     } else {
       startNewGame();
     }
-  }, [applyPhase, clearAllToasts, startNewGame]);
+  }, [applyPhase, clearAllToasts, pushToasts, startNewGame]);
 
   const handleSaveNow = useCallback(() => {
     const ok = saveWorldToLocal(worldRef.current);
