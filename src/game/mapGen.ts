@@ -190,25 +190,35 @@ export function createStarterWorld(seed = 11701): WorldState {
   const width = 42;
   const height = 42;
   const rand = mulberry32(seed);
-  // Keep the starter valley fair while letting the island, river and resource
-  // pockets take a visibly different shape for every world seed.
+  // Geography modes keep the starter valley safe but change where water enters
+  // the map. Three modes have inland lakes with no sea or river.
   const layoutRand = mulberry32((seed ^ 0x6d2b79f5) >>> 0);
   const between = (min: number, max: number) => min + layoutRand() * (max - min);
   const jitter = (range: number) => Math.floor(layoutRand() * (range * 2 + 1)) - range;
+  const geographyMode = Math.floor(layoutRand() * 8);
+  const coastDepth = between(4.5, 7.2);
+  const coastWaveX = between(1.2, 2.3);
+  const coastWaveY = between(1.0, 2.1);
+  const coastFrequency = between(0.15, 0.23);
   const coastPhaseX = between(0, Math.PI * 2);
   const coastPhaseY = between(0, Math.PI * 2);
-  const coastPhaseSide = between(0, Math.PI * 2);
-  const coastWaveX = between(1.2, 2.4);
-  const coastWaveY = between(0.8, 1.9);
-  const coastY = between(34.3, 35.5);
-  const coastX = between(1.5, 2.6);
-  const coastSideWave = between(0.6, 1.5);
-  const riverBase = between(29.8, 31.2);
-  const riverAmplitude = between(1.2, 2.2);
-  const riverFrequency = between(0.13, 0.21);
+  const riverBase = between(28.5, 30.4);
+  const riverAmplitude = between(1.4, 2.6);
+  const riverFrequency = between(0.12, 0.19);
   const riverPhase = between(0, Math.PI * 2);
-  const riverBend = between(0.4, 0.9);
-  const riverBendPhase = between(0, Math.PI * 2);
+  const riverBaseYEast = between(11, 14);
+  const riverBaseYWest = between(35, 37);
+  const riverHorizontalPhase = between(0, Math.PI * 2);
+  const lakeCenters = [
+    { x: 32, y: 8 },
+    { x: 33, y: 33 },
+    { x: 8, y: 34 },
+  ];
+  const lakeCenter = lakeCenters[Math.floor(layoutRand() * lakeCenters.length)];
+  const lakeRadiusX = between(4.5, 6.5);
+  const lakeRadiusY = between(3.8, 6.2);
+  const lakeAngle = between(-0.45, 0.45);
+  const lakeRoughness = between(0.025, 0.095);
   const northShiftX = jitter(1);
   const northShiftY = jitter(1);
   const westShiftX = jitter(1);
@@ -219,33 +229,96 @@ export function createStarterWorld(seed = 11701): WorldState {
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      // Seeded Mediterranean coast along the bottom and left edges.
-      const coastWave = Math.sin(x * 0.22 + coastPhaseX) * coastWaveX
-        + Math.cos(y * 0.19 + coastPhaseY) * coastWaveY;
-      const seaLine = coastY + coastWave * 0.55;
-      const seaSide = coastX + Math.sin(y * 0.25 + coastPhaseSide) * coastSideWave;
-      const isSea = y > seaLine || x < seaSide;
-      // A seeded river still stays east of the starter plaza and runs toward the sea.
-      const riverCenter = riverBase
+      const horizontalWave = Math.sin(x * coastFrequency + coastPhaseX) * coastWaveX
+        + Math.cos(x * coastFrequency * 0.55 + coastPhaseY) * coastWaveY * 0.4;
+      const verticalWave = Math.sin(y * coastFrequency + coastPhaseY) * coastWaveY
+        + Math.cos(y * coastFrequency * 0.6 + coastPhaseX) * coastWaveX * 0.35;
+      const northLine = coastDepth + horizontalWave;
+      const southLine = height - coastDepth + horizontalWave;
+      const westLine = coastDepth + verticalWave;
+      const eastLine = width - coastDepth + verticalWave;
+      const touchesSouth = y > southLine;
+      const touchesNorth = y < northLine;
+      const touchesWest = x < westLine;
+      const touchesEast = x > eastLine;
+
+      let isSea = false;
+      let nearSea = false;
+      switch (geographyMode) {
+        case 0:
+          isSea = touchesSouth;
+          nearSea = y > southLine - 1.6;
+          break;
+        case 1:
+          isSea = touchesNorth;
+          nearSea = y < northLine + 1.6;
+          break;
+        case 2:
+          isSea = touchesEast;
+          nearSea = x > eastLine - 1.6;
+          break;
+        case 3:
+          isSea = touchesWest;
+          nearSea = x < westLine + 1.6;
+          break;
+        case 4:
+          isSea = touchesSouth || touchesWest;
+          nearSea = y > southLine - 1.6 || x < westLine + 1.6;
+          break;
+        default:
+          break;
+      }
+
+      let distRiver = Number.POSITIVE_INFINITY;
+      let riverCenterX = riverBase
         + Math.sin(y * riverFrequency + riverPhase) * riverAmplitude
-        + Math.sin(y * 0.085 + riverBendPhase) * riverBend;
-      const distRiver = Math.abs(x - riverCenter);
-      const isRiver = !isSea && distRiver < 1.35 && y > 6;
+        + Math.sin(y * 0.075 + riverPhase * 0.7) * 0.9;
+      let riverCenterY = 0;
+      if (geographyMode === 2) riverCenterY = riverBaseYEast
+        + Math.sin(x * riverFrequency + riverHorizontalPhase) * riverAmplitude;
+      if (geographyMode === 3) riverCenterY = riverBaseYWest
+        + Math.sin(x * riverFrequency + riverHorizontalPhase) * riverAmplitude;
+
+      let riverReach = false;
+      if (geographyMode === 0 || geographyMode === 4) {
+        distRiver = Math.abs(x - riverCenterX);
+        riverReach = y > (geographyMode === 0 ? 5 : 12);
+      } else if (geographyMode === 1) {
+        distRiver = Math.abs(x - riverCenterX);
+        riverReach = y < height - 14;
+      } else if (geographyMode === 2 || geographyMode === 3) {
+        distRiver = Math.abs(y - riverCenterY);
+        riverReach = geographyMode === 2 ? x > 17 : x < 25;
+      }
+      const isRiver = !isSea && riverReach && distRiver < 1.35;
+
+      const hasLake = geographyMode >= 5;
+      let isLake = false;
+      let nearLake = false;
+      if (hasLake) {
+        const lakeDx = x - lakeCenter.x;
+        const lakeDy = y - lakeCenter.y;
+        const lakeX = lakeDx * Math.cos(lakeAngle) + lakeDy * Math.sin(lakeAngle);
+        const lakeY = -lakeDx * Math.sin(lakeAngle) + lakeDy * Math.cos(lakeAngle);
+        const lakeDistance = Math.hypot(lakeX / lakeRadiusX, lakeY / lakeRadiusY)
+          + (fbm(x * 0.23 + 8.2, y * 0.23 + 3.7, seed + 131) - 0.5) * lakeRoughness;
+        isLake = lakeDistance < 1;
+        nearLake = lakeDistance < 1.2;
+      }
 
       let terrain: TerrainKind = 'grass';
       let elevation = 0;
 
-      if (isSea || isRiver) {
+      if (isSea || isRiver || isLake) {
         terrain = 'water';
       } else {
-        const nearSea = y > seaLine - 1.6 || x < seaSide + 1.4;
         const nFertile = fbm(x * 0.12 + 3.1, y * 0.12 + 7.4, seed);
         const nForest = fbm(x * 0.16 + 14.2, y * 0.16 + 2.8, seed + 17);
         const nStone = fbm(x * 0.18 + 25.4, y * 0.18 + 19.1, seed + 53);
 
-        if (nearSea) {
+        if (nearSea || nearLake) {
           terrain = 'sand';
-        } else if (distRiver < 3.1 && y > 10 && nFertile > 0.36) {
+        } else if (riverReach && distRiver < 3.1 && y > 10 && nFertile > 0.36) {
           terrain = 'clay';
         } else if (nStone > 0.69 && y < 18) {
           terrain = 'stone';

@@ -78,7 +78,7 @@ export function TitleOverlay({ hasSavedGame, notice, initialSeed, onStartNew, on
         <div className="seed-picker">
           <div className="seed-picker-fields">
             <label htmlFor="world-seed">Semilla del mundo</label>
-            <p id="seed-help">Elige un número para explorar otro mapa o compartirlo con alguien.</p>
+            <p id="seed-help">Cada semilla cambia el relieve, la costa y los lagos, manteniendo un inicio justo.</p>
             <div className="seed-picker-controls">
               <input
                 id="world-seed"
