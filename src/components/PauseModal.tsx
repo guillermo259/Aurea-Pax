@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { Download, Upload } from 'lucide-react';
+import { MAX_SAVE_BYTES } from '../game/persistence';
 
 interface PauseModalProps {
   onResume: () => void;
-  onSaveLocal: () => void;
+  onSaveLocal: () => boolean;
   onExportJson: () => void;
   onImportJson: (raw: string) => void;
   onRestart: () => void;
@@ -25,7 +26,17 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
+    if (file.size > MAX_SAVE_BYTES) {
+      setStatusMsg(null);
+      setErrorMsg('El archivo es demasiado grande (máximo 8 MB).');
+      return;
+    }
     const reader = new FileReader();
+    reader.onerror = () => {
+      setStatusMsg(null);
+      setErrorMsg('No se pudo leer el archivo.');
+    };
     reader.onload = () => {
       try {
         onImportJson(String(reader.result ?? ''));
@@ -37,7 +48,6 @@ export const PauseModal: React.FC<PauseModalProps> = ({
       }
     };
     reader.readAsText(file);
-    e.target.value = '';
   };
 
   return (
@@ -69,9 +79,9 @@ export const PauseModal: React.FC<PauseModalProps> = ({
           <button
             type="button"
             onClick={() => {
-              onSaveLocal();
-              setErrorMsg(null);
-              setStatusMsg('Guardado en este navegador.');
+              const saved = onSaveLocal();
+              setErrorMsg(saved ? null : 'No se pudo guardar (almacenamiento lleno o bloqueado).');
+              setStatusMsg(saved ? 'Guardado en este navegador.' : null);
             }}
             className="w-full py-2 px-4 rounded font-medium text-sm bg-[#27211a] text-[#f3eadb] border border-[#b78e4a]/35 hover:bg-[#332b22] cursor-pointer"
           >

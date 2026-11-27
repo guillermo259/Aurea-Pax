@@ -15,6 +15,7 @@ import {
   getInitialCameraForWorld,
   getPlacementTooltip,
   gridToIso,
+  invalidateTerrainCache,
   renderDayNightOverlay,
   renderWorld,
   screenToGrid,
@@ -139,6 +140,7 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
 
   const nextToastIdRef = useRef(1);
+  const victorySoundPlayedRef = useRef(false);
   const toastCooldownRef = useRef<Map<string, number>>(new Map());
   const toastTimersRef = useRef<Map<number, number>>(new Map());
 
@@ -284,10 +286,12 @@ export default function App() {
     const fresh = createStarterWorld(11701);
     recomputeStaticStatuses(fresh);
     worldRef.current = fresh;
+    invalidateTerrainCache();
     cameraRef.current = getInitialCameraForWorld(fresh);
     speedRef.current = 1;
     selectedBuildingIdRef.current = null;
     selectedCartIdRef.current = null;
+    victorySoundPlayedRef.current = false;
     setLedgerOpen(false);
     clearAllToasts();
     applyPhase('playing');
@@ -297,11 +301,13 @@ export default function App() {
   const continueSavedGame = useCallback(() => {
     const loaded = loadWorldFromLocal();
     if (loaded) {
-      worldRef.current = loaded.world;
-      cameraRef.current = getInitialCameraForWorld(loaded.world);
+      worldRef.current = loaded;
+      invalidateTerrainCache();
+      cameraRef.current = getInitialCameraForWorld(loaded);
       speedRef.current = 1;
       selectedBuildingIdRef.current = null;
       selectedCartIdRef.current = null;
+      victorySoundPlayedRef.current = false;
       setLedgerOpen(false);
       clearAllToasts();
       applyPhase('playing');
@@ -334,12 +340,14 @@ export default function App() {
     (raw: string) => {
       const imported = deserializeWorld(raw);
       worldRef.current = imported;
+      invalidateTerrainCache();
       cameraRef.current = getInitialCameraForWorld(imported);
       selectedBuildingIdRef.current = null;
       selectedCartIdRef.current = null;
+      victorySoundPlayedRef.current = false;
       clearAllToasts();
       saveWorldToLocal(imported);
-      setHasSavedGame(true);
+      setHasSavedGame(hasLocalSave());
       applyPhase('playing');
     },
     [applyPhase, clearAllToasts],
@@ -447,7 +455,6 @@ export default function App() {
     let lastRenderCostMs = 0;
     let hudSyncAccum = 0;
     let autoSaveAccum = 0;
-    let victorySoundPlayed = false;
     const weatherParticles = new WeatherParticlePool();
 
     const tick = (now: number) => {
@@ -506,9 +513,9 @@ export default function App() {
         }
 
         if (world.victoryAchieved && !world.victoryDismissed) {
-          if (!victorySoundPlayed) {
+          if (!victorySoundPlayedRef.current) {
             romanAudio.playVictory();
-            victorySoundPlayed = true;
+            victorySoundPlayedRef.current = true;
           }
           applyPhase('gameover');
         } else if (world.bankrupt) {
@@ -519,7 +526,7 @@ export default function App() {
         if (autoSaveAccum >= 25) {
           autoSaveAccum = 0;
           saveWorldToLocal(world);
-          setHasSavedGame(true);
+          setHasSavedGame(hasLocalSave());
         }
 
         hudSyncAccum += dt;
@@ -938,8 +945,9 @@ export default function App() {
         <PauseModal
           onResume={() => applyPhase('playing')}
           onSaveLocal={() => {
-            saveWorldToLocal(worldRef.current);
-            setHasSavedGame(true);
+            const ok = saveWorldToLocal(worldRef.current);
+            setHasSavedGame(hasLocalSave());
+            return ok;
           }}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}

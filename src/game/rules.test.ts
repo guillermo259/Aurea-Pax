@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DAY_CYCLE_SECONDS, getDaylightColorFilter, getDayPhaseInfo } from './dayCycle';
 import { createStarterWorld, getTileIndex } from './mapGen';
 import { findRoadPathBetweenBuildings } from './pathfinding';
-import { deserializeWorld, serializeWorld } from './persistence';
+import { MAX_SAVE_BYTES, deserializeWorld, serializeWorld } from './persistence';
 import {
   buildHudSnapshot,
   canPlaceBuilding,
@@ -176,16 +176,26 @@ test('victory condition triggers only when all Senate goals are satisfied', () =
   }
 });
 
-test('save serialization and deserialization preserve world integrity', () => {
+test('save serialization and deserialization preserve an in-progress world', () => {
   const world = createStarterWorld(11701);
   stepSimulation(world, 1.0);
+  assert.ok(world.carts.length > 0);
+  assert.ok(world.citizens.length > 0);
+
   const payload = serializeWorld(world);
   const restored = deserializeWorld(JSON.stringify(payload));
 
   assert.equal(restored.seed, world.seed);
-  assert.equal(restored.buildings.length, world.buildings.length);
-  assert.equal(Math.round(restored.denarii), Math.round(world.denarii));
   assert.equal(restored.tiles.length, world.tiles.length);
+  assert.equal(
+    restored.tiles.filter((t) => t.isRoad).length,
+    world.tiles.filter((t) => t.isRoad).length,
+  );
+  assert.deepEqual(restored.stock, world.stock);
+  assert.deepEqual(restored.buildings, world.buildings);
+  assert.deepEqual(restored.carts, world.carts);
+  assert.deepEqual(restored.citizens, world.citizens);
+  assert.equal(Math.round(restored.denarii), Math.round(world.denarii));
 });
 
 test('weather transitions occur deterministically and adjust farm efficiency in stepSimulation', () => {
@@ -351,4 +361,84 @@ test('citizens and peones spawn along valid road paths between production/housin
       'Citizens traversing a demolished road tile must be removed cleanly',
     );
   }
+});
+
+test('imported saves are validated: corrupted or hostile JSON is rejected or sanitized', () => {
+  const payload = serializeWorld(createStarterWorld(11701));
+
+  // Map dimensions are bounded instead of trusting the file (prevents huge allocations / crashes)
+  const oversized = JSON.parse(JSON.stringify(payload));
+  oversized.world.width = 100000;
+  oversized.world.height = 100000;
+  assert.throws(() => deserializeWorld(JSON.stringify(oversized)), /inválid|incompatible/i);
+
+  // Tile array must match the declared dimensions
+  const truncated = JSON.parse(JSON.stringify(payload));
+  truncated.world.tiles = truncated.world.tiles.slice(0, 10);
+  assert.throws(() => deserializeWorld(JSON.stringify(truncated)), /inválid|incompatible/i);
+
+  // Oversized raw input is rejected before parsing
+  assert.throws(
+    () => deserializeWorld('x'.repeat(MAX_SAVE_BYTES + 1)),
+    /demasiado grande/i,
+  );
+
+  // Malformed values are sanitized instead of leaking NaN/negative values into the simulation
+  const tampered = JSON.parse(JSON.stringify(payload));
+  tampered.world.denarii = 'unlimited';
+  tampered.world.stock.wood = Number.NaN;
+  tampered.world.stock.stone = -500;
+  tampered.world.weather.kind = 'lava';
+  tampered.world.tiles[0].terrain = 'lava';
+  tampered.world.tiles[1].terrain = 'water';
+  tampered.world.tiles[1].isRoad = true;
+  tampered.world.buildings.push({ id: 9999, type: 'colosseum', x: 0, y: 0, size: 1 });
+  tampered.world.buildings.push({ id: 9998, type: 'market', x: -4, y: 0, size: 2 });
+  tampered.world.citizens.push({
+    id: 1,
+    role: 'peon',
+    originBuildingId: 424242,
+    targetBuildingId: 424243,
+    path: [{ x: 0, y: 0 }, { x: 1, y: 1 }],
+  });
+  tampered.world.carts.push({
+    id: 1,
+    ownerBuildingId: 1,
+    targetBuildingId: 2,
+    cargo: 'gold',
+    amount: 5,
+    path: [{ x: 0, y: 0 }, { x: 1, y: 1 }],
+  });
+
+  const restored = deserializeWorld(JSON.stringify(tampered));
+
+  assert.ok(Number.isFinite(restored.denarii));
+  assert.ok(Number.isFinite(restored.stock.wood) && restored.stock.wood >= 0);
+  assert.ok(Number.isFinite(restored.stock.stone) && restored.stock.stone >= 0);
+  assert.equal(restored.weather.kind, 'clear');
+  assert.equal(restored.tiles[0].terrain, 'grass');
+  assert.equal(restored.tiles[1].isRoad, false, 'Roads cannot be forged on water tiles');
+  assert.equal(restored.buildings.length, payload.world.buildings.length);
+  assert.ok(
+    restored.buildings.every(
+      (b) => b.x >= 0 && b.y >= 0 && b.x + b.size <= restored.width && b.y + b.size <= restored.height,
+    ),
+  );
+  assert.ok(restored.nextBuildingId > Math.max(...restored.buildings.map((b) => b.id)));
+
+  const buildingIds = new Set(restored.buildings.map((b) => b.id));
+  assert.ok(
+    restored.citizens.every(
+      (c) => buildingIds.has(c.originBuildingId) && buildingIds.has(c.targetBuildingId),
+    ),
+  );
+  assert.ok(
+    restored.carts.every(
+      (c) => buildingIds.has(c.ownerBuildingId) && buildingIds.has(c.targetBuildingId),
+    ),
+  );
+
+  // A sanitized world must still simulate without throwing
+  stepSimulation(restored, 0.5);
+  assert.ok(Number.isFinite(restored.denarii));
 });

@@ -806,6 +806,11 @@ interface TerrainCacheEntry {
 
 let terrainCache: TerrainCacheEntry | null = null;
 
+/** Drops the cached terrain bitmap so a different save is never drawn with stale roads. */
+export function invalidateTerrainCache(): void {
+  terrainCache = null;
+}
+
 function getOrBuildTerrainCache(world: WorldState): TerrainCacheEntry {
   if (
     terrainCache &&
