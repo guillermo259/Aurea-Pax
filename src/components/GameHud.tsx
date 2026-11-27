@@ -194,6 +194,13 @@ export const GameHud: React.FC<GameHudProps> = ({
             <span className={hud.hasForum ? 'text-[#89c983]' : 'text-[#b9aa94]'}>
               {hud.hasForum ? 'Foro ✓' : 'Foro ✗'}
             </span>
+            <span aria-hidden="true">·</span>
+            <span
+              className={hud.staffingRatio < 1 ? 'text-[#e5986f]' : 'text-[#89c983]'}
+              title="Mano de obra disponible para talleres (población × 0,75 / demanda)"
+            >
+              Obreros {Math.round(hud.staffingRatio * 100)}%
+            </span>
           </div>
 
           {/* Zoom controls (also usable on touch devices without a wheel) */}
