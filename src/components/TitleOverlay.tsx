@@ -3,12 +3,14 @@ import { RomanCrestEmblem } from './RomanIcons';
 
 interface TitleOverlayProps {
   hasSavedGame: boolean;
+  notice?: string | null;
   onStartNew: () => void;
   onContinue: () => void;
 }
 
 export const TitleOverlay: React.FC<TitleOverlayProps> = ({
   hasSavedGame,
+  notice,
   onStartNew,
   onContinue,
 }) => {
@@ -41,6 +43,12 @@ export const TitleOverlay: React.FC<TitleOverlayProps> = ({
             Traza calzadas de basalto, enlaza campos de trigo, molinos, viñedos y alfarerías, y
             observa tus carretas abastecer el Horreum y los mercados para elevar a tus ciudadanos.
           </p>
+
+          {notice && (
+            <p className="mb-4 rounded border border-[#b78e4a]/35 bg-[#241d15] px-3 py-2 text-xs text-[#f0b86e] leading-relaxed">
+              {notice}
+            </p>
+          )}
 
           <div className="flex flex-wrap items-center gap-3">
             <button

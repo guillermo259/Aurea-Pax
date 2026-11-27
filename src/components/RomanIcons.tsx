@@ -144,6 +144,14 @@ export function BuildingIcon({ type, className = 'w-6 h-6' }: { type: BuildingTy
           <polygon points="3,10 12,4 21,10" fill={type === 'forum' ? '#d4a347' : '#c65e3a'} stroke="#2a2016" strokeWidth="1.2" />
         </>
       )}
+      {type === 'watchtower' && (
+        <>
+          <rect x="8" y="9" width="8" height="11" fill="#e2d8c4" stroke="#2a2016" strokeWidth="1.3" />
+          <polygon points="6,9 12,4 18,9" fill="#b65436" stroke="#2a2016" strokeWidth="1.2" />
+          <rect x="7" y="16" width="10" height="2.5" fill="#b5aa95" stroke="#2a2016" strokeWidth="1" />
+          <circle cx="12" cy="2.5" r="1.6" fill="#f2a13c" />
+        </>
+      )}
       {type === 'wheat_farm' && (
         <>
           <rect x="4" y="14" width="16" height="6" rx="1" fill="#cfa238" stroke="#2a2016" strokeWidth="1.2" />

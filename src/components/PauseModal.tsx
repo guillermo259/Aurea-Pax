@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
 import { Download, Upload } from 'lucide-react';
+import { MAX_SAVE_BYTES } from '../game/persistence';
 
 interface PauseModalProps {
   onResume: () => void;
-  onSaveLocal: () => void;
+  onSaveLocal: () => boolean;
   onExportJson: () => void;
   onImportJson: (raw: string) => void;
   onRestart: () => void;
@@ -25,7 +26,17 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    e.target.value = '';
+    if (file.size > MAX_SAVE_BYTES) {
+      setStatusMsg(null);
+      setErrorMsg('El archivo es demasiado grande (máximo 8 MB).');
+      return;
+    }
     const reader = new FileReader();
+    reader.onerror = () => {
+      setStatusMsg(null);
+      setErrorMsg('No se pudo leer el archivo.');
+    };
     reader.onload = () => {
       try {
         onImportJson(String(reader.result ?? ''));
@@ -37,13 +48,13 @@ export const PauseModal: React.FC<PauseModalProps> = ({
       }
     };
     reader.readAsText(file);
-    e.target.value = '';
   };
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
       <div
         role="dialog"
+        aria-modal="true"
         aria-label="Menú de pausa"
         className="w-full max-w-sm rounded-lg bg-[#191511] border border-[#c9953c]/50 shadow-2xl p-6 text-[#f4ede0]"
       >
@@ -60,6 +71,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
         <div className="space-y-2.5">
           <button
             type="button"
+            autoFocus
             onClick={onResume}
             className="w-full py-2.5 px-4 rounded font-semibold text-sm bg-[#c9953c] text-[#17120c] hover:bg-[#dba84f] cursor-pointer"
           >
@@ -69,9 +81,9 @@ export const PauseModal: React.FC<PauseModalProps> = ({
           <button
             type="button"
             onClick={() => {
-              onSaveLocal();
-              setErrorMsg(null);
-              setStatusMsg('Guardado en este navegador.');
+              const saved = onSaveLocal();
+              setErrorMsg(saved ? null : 'No se pudo guardar (almacenamiento lleno o bloqueado).');
+              setStatusMsg(saved ? 'Guardado en este navegador.' : null);
             }}
             className="w-full py-2 px-4 rounded font-medium text-sm bg-[#27211a] text-[#f3eadb] border border-[#b78e4a]/35 hover:bg-[#332b22] cursor-pointer"
           >

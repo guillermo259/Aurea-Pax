@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Coins, Flame, MapPin, RouteOff, X } from 'lucide-react';
+import { AlertTriangle, Coins, Flame, MapPin, RouteOff, ShieldCheck, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ToastNotification } from '../game/types';
 
@@ -16,7 +16,7 @@ export const ToastStack: React.FC<ToastStackProps> = ({ toasts, onDismiss, onFoc
     <div
       aria-live="polite"
       aria-label="Notificaciones críticas"
-      className="fixed top-16 left-3 z-20 w-80 max-w-[calc(100vw-1.5rem)] flex flex-col gap-2 pointer-events-none"
+      className="fixed top-32 left-3 z-20 w-80 max-w-[calc(100vw-1.5rem)] flex flex-col gap-2 pointer-events-none xl:top-16"
     >
       <AnimatePresence initial={false}>
         {toasts.map((toast) => {
@@ -30,7 +30,9 @@ export const ToastStack: React.FC<ToastStackProps> = ({ toasts, onDismiss, onFoc
                 ? Coins
                 : toast.kind === 'road_disconnected'
                   ? RouteOff
-                  : AlertTriangle;
+                  : toast.kind === 'save_recovered'
+                    ? ShieldCheck
+                    : AlertTriangle;
 
           return (
             <motion.div

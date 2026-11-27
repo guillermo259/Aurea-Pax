@@ -1,13 +1,15 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BalanceLedgerModal } from './components/BalanceLedgerModal';
+import { ConfirmModal } from './components/ConfirmModal';
 import { GameHud } from './components/GameHud';
 import { InspectorPanel } from './components/InspectorPanel';
+import { ObjectivesModal } from './components/ObjectivesModal';
 import { OutcomeModal } from './components/OutcomeModal';
 import { PauseModal } from './components/PauseModal';
 import { TitleOverlay } from './components/TitleOverlay';
 import { ToastStack } from './components/ToastStack';
 import { romanAudio } from './game/audio';
-import { BUILDINGS } from './game/catalog';
+import { BUILDINGS, WHEAT_SOW_COST } from './game/catalog';
 import { normalizeDayTime } from './game/dayCycle';
 import {
   CameraState,
@@ -15,15 +17,17 @@ import {
   getInitialCameraForWorld,
   getPlacementTooltip,
   gridToIso,
+  invalidateTerrainCache,
   renderDayNightOverlay,
   renderWorld,
   screenToGrid,
 } from './game/isoRenderer';
 import { createStarterWorld, getTileIndex, inBounds } from './game/mapGen';
+import { getObjectives } from './game/objectives';
 import {
   deserializeWorld,
   hasLocalSave,
-  loadWorldFromLocal,
+  loadSavedGame,
   saveWorldToLocal,
   serializeWorld,
 } from './game/persistence';
@@ -31,9 +35,11 @@ import {
   buildHudSnapshot,
   canUpgradeHouse,
   demolishAt,
+  EXTINGUISH_COST,
   extinguishFire,
   placeBuilding,
   recomputeStaticStatuses,
+  sowWheatFarm,
   stepSimulation,
   upgradeAllReadyHouses,
   upgradeHouse,
@@ -64,6 +70,23 @@ function getInitialDayTimeParam(): number | null {
   return Number.isFinite(parsed) ? normalizeDayTime(parsed) : null;
 }
 
+/** `?seed=123` lets players share or revisit a map; otherwise the demo seed is used. */
+function getInitialSeedParam(): number {
+  if (typeof window === 'undefined') return 11701;
+  const raw = new URLSearchParams(window.location.search).get('seed');
+  if (raw === null) return 11701;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed >>> 0 : 11701;
+}
+
+interface ConfirmRequest {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  destructive?: boolean;
+  onConfirm: () => void;
+}
+
 const HOTKEY_TO_BUILDING: Record<string, { cat: BuildCategory; type: BuildingType }> = {
   '1': { cat: 'logistics', type: 'road' },
   '2': { cat: 'logistics', type: 'horreum' },
@@ -83,7 +106,7 @@ export default function App() {
 
   const initialWorldRef = useRef<WorldState | null>(null);
   if (!initialWorldRef.current) {
-    const w = createStarterWorld(11701);
+    const w = createStarterWorld(getInitialSeedParam());
     const paramDayTime = getInitialDayTimeParam();
     if (paramDayTime !== null) {
       w.dayTime = paramDayTime;
@@ -137,8 +160,17 @@ export default function App() {
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
   const [placementTooltip, setPlacementTooltip] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+  const [objectivesOpen, setObjectivesOpen] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const reducedMotionRef = useRef(
+    typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+  );
 
   const nextToastIdRef = useRef(1);
+  const victorySoundPlayedRef = useRef(false);
   const toastCooldownRef = useRef<Map<string, number>>(new Map());
   const toastTimersRef = useRef<Map<number, number>>(new Map());
 
@@ -281,35 +313,67 @@ export default function App() {
   }, []);
 
   const startNewGame = useCallback(() => {
-    const fresh = createStarterWorld(11701);
+    const seed = Math.floor(Math.random() * 0xffffffff) >>> 0;
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('seed', String(seed));
+      window.history.replaceState(null, '', url.toString());
+    }
+    const fresh = createStarterWorld(seed);
     recomputeStaticStatuses(fresh);
     worldRef.current = fresh;
+    invalidateTerrainCache();
     cameraRef.current = getInitialCameraForWorld(fresh);
     speedRef.current = 1;
     selectedBuildingIdRef.current = null;
     selectedCartIdRef.current = null;
+    victorySoundPlayedRef.current = false;
     setLedgerOpen(false);
+    setObjectivesOpen(false);
+    setConfirmRequest(null);
+    setSaveNotice(null);
     clearAllToasts();
     applyPhase('playing');
     romanAudio.playUpgrade();
   }, [applyPhase, clearAllToasts]);
 
   const continueSavedGame = useCallback(() => {
-    const loaded = loadWorldFromLocal();
-    if (loaded) {
-      worldRef.current = loaded.world;
-      cameraRef.current = getInitialCameraForWorld(loaded.world);
+    const result = loadSavedGame();
+    if (result.status === 'ok') {
+      const loaded = result.world;
+      worldRef.current = loaded;
+      invalidateTerrainCache();
+      cameraRef.current = getInitialCameraForWorld(loaded);
       speedRef.current = 1;
       selectedBuildingIdRef.current = null;
       selectedCartIdRef.current = null;
+      victorySoundPlayedRef.current = false;
       setLedgerOpen(false);
+      setObjectivesOpen(false);
+      setConfirmRequest(null);
+      setSaveNotice(null);
       clearAllToasts();
       applyPhase('playing');
       romanAudio.playClick();
+      if (result.recovered) {
+        pushToasts([
+          {
+            kind: 'save_recovered',
+            severity: 'warning',
+            title: 'Partida recuperada',
+            message:
+              'La copia principal estaba dañada; se cargó el autoguardado anterior. Guarda de nuevo para fijar la partida.',
+            dedupeKey: 'save_recovered',
+            durationMs: 8000,
+          },
+        ]);
+      }
+    } else if (result.status === 'corrupt') {
+      setSaveNotice(result.message);
     } else {
       startNewGame();
     }
-  }, [applyPhase, clearAllToasts, startNewGame]);
+  }, [applyPhase, clearAllToasts, pushToasts, startNewGame]);
 
   const handleSaveNow = useCallback(() => {
     const ok = saveWorldToLocal(worldRef.current);
@@ -334,21 +398,64 @@ export default function App() {
     (raw: string) => {
       const imported = deserializeWorld(raw);
       worldRef.current = imported;
+      invalidateTerrainCache();
       cameraRef.current = getInitialCameraForWorld(imported);
       selectedBuildingIdRef.current = null;
       selectedCartIdRef.current = null;
+      victorySoundPlayedRef.current = false;
+      setSaveNotice(null);
       clearAllToasts();
       saveWorldToLocal(imported);
-      setHasSavedGame(true);
+      setHasSavedGame(hasLocalSave());
       applyPhase('playing');
     },
     [applyPhase, clearAllToasts],
+  );
+
+  const requestNewGame = useCallback(() => {
+    romanAudio.playClick();
+    setConfirmRequest({
+      title: 'Nueva colonia',
+      message:
+        'Se descartará la ciudad actual. Puedes guardarla antes desde el menú de pausa (P).',
+      confirmLabel: 'Empezar de nuevo',
+      onConfirm: () => {
+        setConfirmRequest(null);
+        startNewGame();
+      },
+    });
+  }, [startNewGame]);
+
+  const requestDemolish = useCallback(
+    (building: PlacedBuilding) => {
+      setConfirmRequest({
+        title: `Demoler ${BUILDINGS[building.type].name}`,
+        message:
+          'Se recuperará parte del coste, pero la estructura y su producción desaparecerán.',
+        confirmLabel: 'Demoler',
+        destructive: true,
+        onConfirm: () => {
+          setConfirmRequest(null);
+          if (demolishAt(worldRef.current, building.x, building.y)) {
+            romanAudio.playDemolish();
+            selectedBuildingIdRef.current = null;
+            drainWorldNotifications();
+            syncHudNow();
+          }
+        },
+      });
+    },
+    [drainWorldNotifications, syncHudNow],
   );
 
   // Keyboard shortcuts & camera movement keys
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      const targetIsControl =
+        e.target instanceof HTMLElement &&
+        e.target.closest('button, a, input, textarea, select') !== null;
+      if (targetIsControl && e.key !== 'Escape') return;
       const key = e.key.toLowerCase();
 
       if (phaseRef.current === 'title') {
@@ -361,8 +468,13 @@ export default function App() {
 
       if (e.key === 'Escape' || key === 'p') {
         e.preventDefault();
+        if (confirmRequest) return;
         if (ledgerOpen) {
           setLedgerOpen(false);
+          return;
+        }
+        if (objectivesOpen) {
+          setObjectivesOpen(false);
           return;
         }
         if (phaseRef.current === 'playing') {
@@ -419,7 +531,15 @@ export default function App() {
       window.removeEventListener('blur', clearHeld);
       document.removeEventListener('visibilitychange', clearHeld);
     };
-  }, [applyPhase, handleSelectTool, ledgerOpen, startNewGame, syncHudNow]);
+  }, [
+    applyPhase,
+    confirmRequest,
+    handleSelectTool,
+    ledgerOpen,
+    objectivesOpen,
+    startNewGame,
+    syncHudNow,
+  ]);
 
   // Main 60 FPS Canvas mount & simulation loop (mounted once!)
   useEffect(() => {
@@ -447,7 +567,6 @@ export default function App() {
     let lastRenderCostMs = 0;
     let hudSyncAccum = 0;
     let autoSaveAccum = 0;
-    let victorySoundPlayed = false;
     const weatherParticles = new WeatherParticlePool();
 
     const tick = (now: number) => {
@@ -485,8 +604,9 @@ export default function App() {
       if (currPhase === 'title') {
         // Gentle live camera tour shifted left in camera coords so village frames cleanly on the right 60%
         const anchor = gridToIso(18.5, 23.5);
-        cameraRef.current.x = anchor.x - 165 + Math.sin(timeSec * 0.2) * 55;
-        cameraRef.current.y = anchor.y + Math.cos(timeSec * 0.17) * 35;
+        const tour = reducedMotionRef.current ? 0 : 1;
+        cameraRef.current.x = anchor.x - 165 + Math.sin(timeSec * 0.2) * 55 * tour;
+        cameraRef.current.y = anchor.y + Math.cos(timeSec * 0.17) * 35 * tour;
         cameraRef.current.zoom = 1.24;
         stepSimulation(world, dt * 0.8);
         world.pendingNotifications.length = 0;
@@ -506,9 +626,9 @@ export default function App() {
         }
 
         if (world.victoryAchieved && !world.victoryDismissed) {
-          if (!victorySoundPlayed) {
+          if (!victorySoundPlayedRef.current) {
             romanAudio.playVictory();
-            victorySoundPlayed = true;
+            victorySoundPlayedRef.current = true;
           }
           applyPhase('gameover');
         } else if (world.bankrupt) {
@@ -519,7 +639,7 @@ export default function App() {
         if (autoSaveAccum >= 25) {
           autoSaveAccum = 0;
           saveWorldToLocal(world);
-          setHasSavedGame(true);
+          setHasSavedGame(hasLocalSave());
         }
 
         hudSyncAccum += dt;
@@ -537,13 +657,15 @@ export default function App() {
           : currPhase === 'playing' && speedRef.current > 0
             ? dt * (0.7 + speedRef.current * 0.3)
             : 0;
-      weatherParticles.update(
-        particleDt,
-        world.weather.kind,
-        world.weather.intensity,
-        rect.width,
-        rect.height,
-      );
+      if (!reducedMotionRef.current) {
+        weatherParticles.update(
+          particleDt,
+          world.weather.kind,
+          world.weather.intensity,
+          rect.width,
+          rect.height,
+        );
+      }
       renderWorld(
         ctx,
         rect.width,
@@ -583,6 +705,24 @@ export default function App() {
       ro.disconnect();
     };
   }, [applyPhase, syncHudNow]);
+
+  // Persist when the tab is hidden or closed so the last autosave window is not lost.
+  useEffect(() => {
+    const persist = () => {
+      if (phaseRef.current === 'playing' || phaseRef.current === 'paused') {
+        saveWorldToLocal(worldRef.current);
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') persist();
+    };
+    window.addEventListener('pagehide', persist);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', persist);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
 
   const applyTileAction = useCallback(
     (gx: number, gy: number, clientX: number, clientY: number, isDragPaint: boolean) => {
@@ -625,6 +765,13 @@ export default function App() {
       }
 
       if (mode.kind === 'demolish') {
+        const demolishTile = world.tiles[getTileIndex(gx, gy, world.width)];
+        if (demolishTile.buildingId !== null) {
+          if (isDragPaint) return;
+          const building = world.buildings.find((b) => b.id === demolishTile.buildingId);
+          if (building) requestDemolish(building);
+          return;
+        }
         if (demolishAt(world, gx, gy)) {
           romanAudio.playDemolish();
           selectedBuildingIdRef.current = null;
@@ -688,7 +835,7 @@ export default function App() {
       }
       syncHudNow();
     },
-    [drainWorldNotifications, pushToasts, syncHudNow],
+    [drainWorldNotifications, pushToasts, requestDemolish, syncHudNow],
   );
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -802,17 +949,44 @@ export default function App() {
     if (extinguishFire(worldRef.current, id)) {
       romanAudio.playClick();
       syncHudNow();
+    } else {
+      pushToasts([
+        {
+          kind: 'resource_shortage',
+          severity: 'warning',
+          title: 'Sin denarios para la brigada',
+          message: `Extinguir el incendio cuesta ${EXTINGUISH_COST} denarios.`,
+          dedupeKey: 'extinguish_no_funds',
+          durationMs: 4000,
+        },
+      ]);
     }
   };
 
-  const handleDemolishFromInspector = (b: PlacedBuilding) => {
-    if (demolishAt(worldRef.current, b.x, b.y)) {
-      romanAudio.playDemolish();
-      selectedBuildingIdRef.current = null;
-      drainWorldNotifications();
+  const handleSowFromInspector = (id: number) => {
+    if (sowWheatFarm(worldRef.current, id)) {
+      romanAudio.playBuild(false);
       syncHudNow();
+    } else {
+      pushToasts([
+        {
+          kind: 'resource_shortage',
+          severity: 'warning',
+          title: 'Sin trigo para sembrar',
+          message: `Necesitas ${WHEAT_SOW_COST} Trigo en el Horreum para volver a sembrar el campo.`,
+          dedupeKey: 'sow_no_wheat',
+          durationMs: 4000,
+        },
+      ]);
     }
   };
+
+  const handleZoomBy = useCallback((factor: number) => {
+    cameraRef.current.zoom = Math.min(2.2, Math.max(0.65, cameraRef.current.zoom * factor));
+  }, []);
+
+  const objectives = getObjectives(worldRef.current);
+  const objectivesDone = objectives.filter((o) => o.done).length;
 
   return (
     <main className="relative w-full h-full overflow-hidden bg-[#18252d]">
@@ -820,6 +994,8 @@ export default function App() {
         <canvas
           ref={canvasRef}
           data-testid="game-canvas"
+          role="application"
+          aria-label="Mapa del asentamiento romano"
           tabIndex={0}
           onContextMenu={(e) => e.preventDefault()}
           onPointerDown={handlePointerDown}
@@ -830,13 +1006,14 @@ export default function App() {
             hoverTileRef.current = null;
           }}
           onWheel={handleWheel}
-          className="block w-full h-full outline-none cursor-crosshair"
+          className="block w-full h-full outline-none cursor-crosshair touch-none"
         />
       </div>
 
       {phase === 'title' && (
         <TitleOverlay
           hasSavedGame={hasSavedGame}
+          notice={saveNotice}
           onStartNew={startNewGame}
           onContinue={continueSavedGame}
         />
@@ -879,10 +1056,18 @@ export default function App() {
           onToggleMute={() => setMuted(romanAudio.toggleMute())}
           saveFeedback={saveFeedback}
           placementTooltip={placementTooltip}
+          objectivesDone={objectivesDone}
+          objectivesTotal={objectives.length}
+          onOpenObjectives={() => {
+            setLedgerOpen(false);
+            setObjectivesOpen(true);
+            romanAudio.playClick();
+          }}
+          onZoom={handleZoomBy}
         />
       )}
 
-      {phase === 'playing' && !ledgerOpen && (
+      {phase === 'playing' && !ledgerOpen && !objectivesOpen && (
         <ToastStack
           toasts={toasts}
           onDismiss={dismissToast}
@@ -901,7 +1086,7 @@ export default function App() {
         />
       )}
 
-      {phase === 'playing' && !ledgerOpen && (
+      {phase === 'playing' && !ledgerOpen && !objectivesOpen && (
         <InspectorPanel
           hud={hud}
           building={hud.selectedBuilding}
@@ -914,7 +1099,8 @@ export default function App() {
           }}
           onUpgradeBuilding={handleUpgradeFromInspector}
           onExtinguishFire={handleExtinguishFromInspector}
-          onDemolishBuilding={handleDemolishFromInspector}
+          onSowWheat={handleSowFromInspector}
+          onDemolishBuilding={requestDemolish}
         />
       )}
 
@@ -934,16 +1120,24 @@ export default function App() {
         />
       )}
 
+      {phase === 'playing' && objectivesOpen && (
+        <ObjectivesModal
+          world={worldRef.current}
+          onClose={() => setObjectivesOpen(false)}
+        />
+      )}
+
       {phase === 'paused' && (
         <PauseModal
           onResume={() => applyPhase('playing')}
           onSaveLocal={() => {
-            saveWorldToLocal(worldRef.current);
-            setHasSavedGame(true);
+            const ok = saveWorldToLocal(worldRef.current);
+            setHasSavedGame(hasLocalSave());
+            return ok;
           }}
           onExportJson={handleExportJson}
           onImportJson={handleImportJson}
-          onRestart={startNewGame}
+          onRestart={requestNewGame}
           onReturnTitle={() => applyPhase('title')}
         />
       )}
@@ -955,7 +1149,18 @@ export default function App() {
             worldRef.current.victoryDismissed = true;
             applyPhase('playing');
           }}
-          onRestart={startNewGame}
+          onRestart={requestNewGame}
+        />
+      )}
+
+      {confirmRequest && (
+        <ConfirmModal
+          title={confirmRequest.title}
+          message={confirmRequest.message}
+          confirmLabel={confirmRequest.confirmLabel}
+          destructive={confirmRequest.destructive}
+          onConfirm={confirmRequest.onConfirm}
+          onCancel={() => setConfirmRequest(null)}
         />
       )}
     </main>
