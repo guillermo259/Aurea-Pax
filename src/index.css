@@ -121,6 +121,54 @@
   color: #eee9dc;
   text-wrap: pretty;
 }
+.seed-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 8.5rem;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.35rem;
+  padding: .9rem 1rem;
+  border: 1px solid #eed9ae50;
+  border-radius: 6px;
+  background: #111b16d9;
+  box-shadow: 0 10px 32px #090e0b42;
+  backdrop-filter: blur(8px);
+}
+.seed-picker-fields > label { display: block; color: #f0d49b; font-size: .85rem; font-weight: 700; }
+.seed-picker-fields > p { margin: .2rem 0 .65rem; color: #dedbce; font-size: .76rem; line-height: 1.4; }
+.seed-picker-controls { display: flex; align-items: stretch; gap: .5rem; }
+.seed-picker-controls input {
+  min-width: 0;
+  width: 8.5rem;
+  padding: .55rem .7rem;
+  border: 1px solid #dcc38c80;
+  border-radius: 4px;
+  background: #080e0b;
+  color: #fff3d8;
+  font: 700 .95rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: .04em;
+}
+.seed-picker-controls input[aria-invalid=true] { border-color: #e58472; }
+.seed-random {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  padding: .5rem .65rem;
+  border: 1px solid #d8c49a55;
+  border-radius: 4px;
+  background: #27352b;
+  color: #fff2d8;
+  font-size: .75rem;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.seed-random:hover { background: #384a39; }
+.seed-status { min-height: 1.2em; margin-top: .45rem; color: #d1c8b3; font-size: .69rem; }
+.seed-preview { margin: 0; text-align: center; }
+.seed-preview svg { display: block; width: 100%; aspect-ratio: 1; border: 1px solid #d6c39780; border-radius: 4px; background: #263d3d; image-rendering: pixelated; }
+.seed-preview figcaption { margin-top: .3rem; color: #ded6c3; font-size: .65rem; }
 .title-actions { gap: .8rem; flex-wrap: wrap; margin-top: 2rem; }
 .title-actions button {
   justify-content: center;
@@ -135,6 +183,7 @@
 .title-primary { background: #ebc47a; color: #292216; box-shadow: inset 0 0 0 1px #ffe1a7; }
 .title-primary:hover { background: #ffda8d; }
 .title-secondary { background: #17241de8; color: #fff2d9; border: 1px solid #c7ad7a; }
+.title-actions button:disabled { opacity: .5; cursor: not-allowed; }
 .title-notice, .save-status {
   margin-top: 1rem; padding: .65rem .9rem; border-radius: 4px;
   border: 1px solid #bb9453; color: #ffe0a4; background: #272219; font-size: .85rem;
@@ -184,6 +233,11 @@
       url('./art/colonia.webp');
   }
   .title-content { margin-top: auto; }
+  .seed-picker { grid-template-columns: minmax(0, 1fr) 6.5rem; gap: .65rem; padding: .7rem; }
+  .seed-picker-controls { flex-wrap: wrap; }
+  .seed-picker-controls input { flex: 1 1 6rem; width: 6rem; }
+  .seed-random { flex: 0 0 auto; }
+  .title-actions { margin-top: 1rem; }
   .title-controls { gap: .8rem 1.2rem; flex-wrap: wrap; }
   .hud-bar { padding: .4rem .5rem; }
   .game-hud { padding: .4rem; }

@@ -190,15 +190,45 @@ export function createStarterWorld(seed = 11701): WorldState {
   const width = 42;
   const height = 42;
   const rand = mulberry32(seed);
+  // Keep the starter valley fair while letting the island, river and resource
+  // pockets take a visibly different shape for every world seed.
+  const layoutRand = mulberry32((seed ^ 0x6d2b79f5) >>> 0);
+  const between = (min: number, max: number) => min + layoutRand() * (max - min);
+  const jitter = (range: number) => Math.floor(layoutRand() * (range * 2 + 1)) - range;
+  const coastPhaseX = between(0, Math.PI * 2);
+  const coastPhaseY = between(0, Math.PI * 2);
+  const coastPhaseSide = between(0, Math.PI * 2);
+  const coastWaveX = between(1.2, 2.4);
+  const coastWaveY = between(0.8, 1.9);
+  const coastY = between(34.3, 35.5);
+  const coastX = between(1.5, 2.6);
+  const coastSideWave = between(0.6, 1.5);
+  const riverBase = between(29.8, 31.2);
+  const riverAmplitude = between(1.2, 2.2);
+  const riverFrequency = between(0.13, 0.21);
+  const riverPhase = between(0, Math.PI * 2);
+  const riverBend = between(0.4, 0.9);
+  const riverBendPhase = between(0, Math.PI * 2);
+  const northShiftX = jitter(1);
+  const northShiftY = jitter(1);
+  const westShiftX = jitter(1);
+  const westShiftY = jitter(1);
+  const eastShiftX = jitter(1);
+  const eastShiftY = jitter(1);
   const tiles: Tile[] = new Array(width * height);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      // Mediterranean coast along the bottom/left edge (y >= 34 or x <= 3 gently curved)
-      const coastWave = Math.sin(x * 0.22 + 0.5) * 1.8 + Math.cos(y * 0.19) * 1.3;
-      const isSea = y > 35 + coastWave * 0.5 || x < 2 + Math.sin(y * 0.25) * 1.1;
-      // Gentle river curving through east-center into the sea
-      const riverCenter = 28 + Math.sin(y * 0.18) * 3.2;
+      // Seeded Mediterranean coast along the bottom and left edges.
+      const coastWave = Math.sin(x * 0.22 + coastPhaseX) * coastWaveX
+        + Math.cos(y * 0.19 + coastPhaseY) * coastWaveY;
+      const seaLine = coastY + coastWave * 0.55;
+      const seaSide = coastX + Math.sin(y * 0.25 + coastPhaseSide) * coastSideWave;
+      const isSea = y > seaLine || x < seaSide;
+      // A seeded river still stays east of the starter plaza and runs toward the sea.
+      const riverCenter = riverBase
+        + Math.sin(y * riverFrequency + riverPhase) * riverAmplitude
+        + Math.sin(y * 0.085 + riverBendPhase) * riverBend;
       const distRiver = Math.abs(x - riverCenter);
       const isRiver = !isSea && distRiver < 1.35 && y > 6;
 
@@ -208,7 +238,7 @@ export function createStarterWorld(seed = 11701): WorldState {
       if (isSea || isRiver) {
         terrain = 'water';
       } else {
-        const nearSea = y > 33.4 + coastWave * 0.5 || x < 3.4 + Math.sin(y * 0.25) * 1.1;
+        const nearSea = y > seaLine - 1.6 || x < seaSide + 1.4;
         const nFertile = fbm(x * 0.12 + 3.1, y * 0.12 + 7.4, seed);
         const nForest = fbm(x * 0.16 + 14.2, y * 0.16 + 2.8, seed + 17);
         const nStone = fbm(x * 0.18 + 25.4, y * 0.18 + 19.1, seed + 53);
@@ -274,19 +304,19 @@ export function createStarterWorld(seed = 11701): WorldState {
   }
 
   // Guaranteed nearby resource zones so every playthrough has fair, discoverable geography
-  paintCluster(12, 23, 2.5, 'fertile'); // Wheat & Vineyards west of settlement
-  paintCluster(19, 14, 2.2, 'fertile'); // Northern fertile meadow
-  paintCluster(25, 22, 1.8, 'clay'); // River clay bank east
-  paintCluster(15, 13, 1.7, 'stone'); // Quarry outcrop north-west
-  paintCluster(22, 18, 2.0, 'forest'); // Timber grove north-east
+  paintCluster(12 + westShiftX, 23 + westShiftY, 2.5, 'fertile'); // Wheat & Vineyards west of settlement
+  paintCluster(19 + northShiftX, 14 + northShiftY, 2.2, 'fertile'); // Northern fertile meadow
+  paintCluster(25 + eastShiftX, 22 + eastShiftY, 1.8, 'clay'); // River clay bank east
+  paintCluster(15 + northShiftX, 13 + northShiftY, 1.7, 'stone'); // Quarry outcrop north-west
+  paintCluster(22 + northShiftX, 18 + northShiftY, 2.0, 'forest'); // Timber grove north-east
 
   // Remote, fogged resource grounds: the reward for road-building and watchtowers.
-  paintCluster(8, 8, 2.4, 'forest');
-  paintCluster(10, 12, 1.8, 'stone');
-  paintCluster(33, 9, 2.2, 'stone');
-  paintCluster(33, 18, 2.0, 'forest');
-  paintCluster(35, 29, 2.0, 'clay');
-  paintCluster(8, 34, 2.2, 'fertile');
+  paintCluster(8 + jitter(2), 8 + jitter(2), 2.4, 'forest');
+  paintCluster(10 + jitter(2), 12 + jitter(2), 1.8, 'stone');
+  paintCluster(33 + jitter(2), 9 + jitter(2), 2.2, 'stone');
+  paintCluster(33 + jitter(2), 18 + jitter(2), 2.0, 'forest');
+  paintCluster(35 + jitter(2), 29 + jitter(2), 2.0, 'clay');
+  paintCluster(8 + jitter(2), 34 + jitter(2), 2.2, 'fertile');
 
   // Assign finite reserves after all terrain painting has finished.
   for (const tile of tiles) {

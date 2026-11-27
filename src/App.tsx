@@ -78,7 +78,7 @@ function getInitialSeedParam(): number {
   const raw = new URLSearchParams(window.location.search).get('seed');
   if (raw === null) return 11701;
   const parsed = Number(raw);
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed >>> 0 : 11701;
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 0xffff_ffff ? parsed : 11701;
 }
 
 interface ConfirmRequest {
@@ -347,8 +347,18 @@ export default function App() {
     cameraRef.current.zoom = Math.min(2.2, Math.max(0.65, cameraRef.current.zoom * factor));
   }, []);
 
-  const startNewGame = useCallback(() => {
-    const seed = Math.floor(Math.random() * 0xffffffff) >>> 0;
+  const startNewGame = useCallback((requestedSeed?: number) => {
+    let seed = requestedSeed;
+    if (seed === undefined) {
+      const randomSeed = new Uint32Array(1);
+      if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+        window.crypto.getRandomValues(randomSeed);
+        seed = randomSeed[0];
+      } else {
+        seed = Math.floor(Math.random() * 0x1_0000_0000) >>> 0;
+      }
+    }
+    seed >>>= 0;
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       url.searchParams.set('seed', String(seed));
@@ -453,7 +463,7 @@ export default function App() {
     [applyPhase, clearAllToasts],
   );
 
-  const requestNewGame = useCallback(() => {
+  const requestNewGame = useCallback((seed?: number) => {
     romanAudio.playClick();
     setConfirmRequest({
       title: 'Nueva colonia',
@@ -462,7 +472,7 @@ export default function App() {
       confirmLabel: 'Empezar de nuevo',
       onConfirm: () => {
         setConfirmRequest(null);
-        startNewGame();
+        startNewGame(seed);
       },
     });
   }, [startNewGame]);
@@ -1114,7 +1124,8 @@ export default function App() {
         <TitleOverlay
           hasSavedGame={hasSavedGame}
           notice={saveNotice}
-          onStartNew={hasSavedGame ? requestNewGame : startNewGame}
+          initialSeed={worldRef.current.seed}
+          onStartNew={(seed) => hasSavedGame ? requestNewGame(seed) : startNewGame(seed)}
           onContinue={continueSavedGame}
           onOpenGuide={() => setGuideSection('guide')}
         />
