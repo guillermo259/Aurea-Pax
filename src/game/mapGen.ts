@@ -271,6 +271,8 @@ export function createStarterWorld(seed = 11701): WorldState {
     citizenRngState: (seed ^ 0x2c1b3c6d) >>> 0,
     pendingNotifications: [],
     _rateWindowTimer: 0,
+    _logisticsTimer: 0,
+    _lastReroutedRoadVersion: 0,
     _producedInWindow: emptyResourceRecord(),
     _consumedInWindow: emptyResourceRecord(),
     _notificationCooldowns: {},

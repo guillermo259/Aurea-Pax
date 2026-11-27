@@ -22,6 +22,7 @@ export const BalanceLedgerModal: React.FC<BalanceLedgerModalProps> = ({
     <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/55 p-4">
       <div
         role="dialog"
+        aria-modal="true"
         aria-label="Libro de Cuentas"
         className="w-full max-w-3xl max-h-[84vh] flex flex-col rounded-lg bg-[#191511] border border-[#c9953c]/45 shadow-2xl overflow-hidden"
       >
@@ -31,8 +32,9 @@ export const BalanceLedgerModal: React.FC<BalanceLedgerModalProps> = ({
               Libro de Cuentas Imperial
             </h2>
             <p className="text-xs text-[#b9aa94]">
-              Impuestos: +{hud.taxPerMin} d/min · Mantenimiento: -{hud.upkeepPerMin} d/min ·
-              Carretas activas: {hud.activeCartCount} · Entregas totales: {hud.totalCartsDelivered}
+              Impuestos: +{hud.taxPerMin} d/min · Mantenimiento: -{hud.upkeepPerMin} d/min · Mano de
+              obra: {Math.round(hud.staffingRatio * 100)}% · Carretas activas: {hud.activeCartCount} ·
+              Entregas totales: {hud.totalCartsDelivered}
             </p>
           </div>
           <button

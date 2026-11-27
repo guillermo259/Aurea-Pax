@@ -54,6 +54,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
       <div
         role="dialog"
+        aria-modal="true"
         aria-label="Menú de pausa"
         className="w-full max-w-sm rounded-lg bg-[#191511] border border-[#c9953c]/50 shadow-2xl p-6 text-[#f4ede0]"
       >
@@ -70,6 +71,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
         <div className="space-y-2.5">
           <button
             type="button"
+            autoFocus
             onClick={onResume}
             className="w-full py-2.5 px-4 rounded font-semibold text-sm bg-[#c9953c] text-[#17120c] hover:bg-[#dba84f] cursor-pointer"
           >

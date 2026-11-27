@@ -1,7 +1,7 @@
 import React from 'react';
 import { ArrowUpCircle, Flame, X } from 'lucide-react';
-import { ALERT_LABELS, BUILDINGS, RESOURCE_META } from '../game/catalog';
-import { UPGRADE_CIVES_COST } from '../game/simulation';
+import { ALERT_HINTS, ALERT_LABELS, BUILDINGS, RESOURCE_META } from '../game/catalog';
+import { EXTINGUISH_COST, UPGRADE_CIVES_COST } from '../game/simulation';
 import { Cart, HudSnapshot, PlacedBuilding, ResourceId } from '../game/types';
 import { BuildingIcon, ResourceIcon } from './RomanIcons';
 
@@ -75,6 +75,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
 
   if (!building) return null;
   const def = BUILDINGS[building.type];
+  const canAffordFireBrigade = hud.denarii >= EXTINGUISH_COST;
   const canUpgradeAfford =
     building.type === 'house_liberti' &&
     building.upgradeReady &&
@@ -136,7 +137,17 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <span className="text-[#b9aa94]">
                 Salida ({RESOURCE_META[def.produces].label})
               </span>
-              <span className="font-mono-num">{building.outputBuffer} / 6</span>
+              <span className="font-mono-num">{building.outputBuffer} / 8</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[#b9aa94]">Mano de obra</span>
+              <span
+                className={`font-mono-num ${
+                  hud.staffingRatio < 1 ? 'text-[#e5986f]' : 'text-[#89c983]'
+                }`}
+              >
+                {Math.round(hud.staffingRatio * 100)}%
+              </span>
             </div>
             {(building.type === 'wheat_farm' || building.type === 'vineyard') && (
               <div className="flex items-center justify-between">
@@ -262,8 +273,13 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
         {building.alerts.length > 0 && (
           <div className="pt-2 border-t border-[#b78e4a]/20 space-y-1">
             {building.alerts.map((al) => (
-              <div key={al} className="text-xs text-[#f08b78]">
-                · {ALERT_LABELS[al] ?? al}
+              <div key={al} className="text-xs">
+                <div className="text-[#f08b78]">· {ALERT_LABELS[al] ?? al}</div>
+                {ALERT_HINTS[al] && (
+                  <div className="pl-3 text-[11px] leading-relaxed text-[#b9aa94]">
+                    {ALERT_HINTS[al]}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -273,12 +289,24 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           <div className="pt-2 border-t border-[#b78e4a]/20">
             <button
               type="button"
+              disabled={!canAffordFireBrigade}
               onClick={() => onExtinguishFire(building.id)}
-              className="w-full py-2 px-3 rounded text-xs font-semibold bg-[#c94432] text-[#fff6f2] hover:bg-[#dc5340] flex items-center justify-center gap-1.5 cursor-pointer"
+              className={`w-full py-2 px-3 rounded text-xs font-semibold flex items-center justify-center gap-1.5 ${
+                canAffordFireBrigade
+                  ? 'bg-[#c94432] text-[#fff6f2] hover:bg-[#dc5340] cursor-pointer'
+                  : 'bg-[#2a231c] text-[#8d7f6b] cursor-not-allowed'
+              }`}
             >
               <Flame className="w-4 h-4" />
-              <span>Extinguir incendio</span>
+              <span>
+                Extinguir incendio ({EXTINGUISH_COST} d)
+              </span>
             </button>
+            {!canAffordFireBrigade && (
+              <p className="text-[11px] text-[#e5986f] text-center">
+                Necesitas {EXTINGUISH_COST} denarios para la brigada de incendios.
+              </p>
+            )}
           </div>
         )}
 

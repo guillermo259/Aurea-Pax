@@ -52,7 +52,7 @@ export function getBuildingCenter(b: PlacedBuilding): { x: number; y: number } {
  * Returns the full waypoint list including center of `from`, road tiles, and center of `to`,
  * or null if no road connection exists.
  */
-export function findRoadPathBetweenBuildings(
+function computeRoadPath(
   world: WorldState,
   from: PlacedBuilding,
   to: PlacedBuilding,
@@ -123,4 +123,38 @@ export function findRoadPathBetweenBuildings(
   roadWaypoints.reverse();
 
   return [getBuildingCenter(from), ...roadWaypoints, getBuildingCenter(to)];
+}
+
+interface PathCache {
+  roadVersion: number;
+  paths: Map<string, GridPoint[] | null>;
+}
+
+const pathCaches = new WeakMap<WorldState, PathCache>();
+
+/**
+ * Cached road path lookup. The cache is invalidated per world whenever the road
+ * network changes, and failures are cached too so disconnected producers do not
+ * re-run BFS on every logistics tick.
+ */
+export function findRoadPathBetweenBuildings(
+  world: WorldState,
+  from: PlacedBuilding,
+  to: PlacedBuilding,
+): GridPoint[] | null {
+  if (from.id === to.id) return null;
+
+  let cache = pathCaches.get(world);
+  if (!cache || cache.roadVersion !== world.roadVersion) {
+    cache = { roadVersion: world.roadVersion, paths: new Map() };
+    pathCaches.set(world, cache);
+  }
+
+  const key = `${from.id}:${to.id}`;
+  if (!cache.paths.has(key)) {
+    if (cache.paths.size > 1000) cache.paths.clear();
+    cache.paths.set(key, computeRoadPath(world, from, to));
+  }
+  const path = cache.paths.get(key) ?? null;
+  return path ? path.map((p) => ({ ...p })) : null;
 }

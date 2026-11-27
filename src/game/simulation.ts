@@ -87,6 +87,8 @@ export function queueNotification(
 export function extinguishFire(world: WorldState, buildingId: number): boolean {
   const b = world.buildings.find((item) => item.id === buildingId);
   if (!b || b.onFireTimer <= 0) return false;
+  if (world.denarii < EXTINGUISH_COST) return false;
+  world.denarii -= EXTINGUISH_COST;
   b.onFireTimer = 0;
   recomputeStaticStatuses(world);
   return true;
@@ -153,6 +155,26 @@ export const UPGRADE_CIVES_COST = {
   wood: 2,
   stone: 2,
 };
+
+/** Cost in denarii of sending the fire brigade to a burning building. */
+export const EXTINGUISH_COST = 15;
+
+/**
+ * Share of the workforce actually available to production buildings.
+ * Housing supplies 75% of its residents as workers; understaffing slows every
+ * workshop down to a floor of 50% instead of stopping the economy outright.
+ */
+export function getStaffingRatio(world: WorldState): number {
+  let demand = 0;
+  for (const b of world.buildings) {
+    if (b.roadConnected && b.onFireTimer <= 0) {
+      demand += BUILDINGS[b.type].workerNeed ?? 0;
+    }
+  }
+  if (demand === 0) return 1;
+  const available = world.totalPopulation * 0.75;
+  return Math.min(1, Math.max(0.5, available / demand));
+}
 
 const PRODUCER_NEXT_PROCESSOR: Partial<Record<ResourceId, BuildingType>> = {
   wheat: 'mill',
@@ -490,12 +512,14 @@ export function recomputeStaticStatuses(world: WorldState): void {
   world.upkeepPerMin = upkeepPerMin;
   world.netDenariiPerMin = taxPerMin - upkeepPerMin;
 
+  const forumGoalMet = !VICTORY_GOALS.requiresForum || hasForum;
+  const incomeGoalMet = !VICTORY_GOALS.requiresPositiveIncome || world.netDenariiPerMin > 0;
   if (
     !world.victoryAchieved &&
     world.totalPopulation >= VICTORY_GOALS.targetPopulation &&
     world.populationCives >= VICTORY_GOALS.targetCives &&
-    hasForum &&
-    world.netDenariiPerMin > 0
+    forumGoalMet &&
+    incomeGoalMet
   ) {
     world.victoryAchieved = true;
   }
@@ -865,6 +889,50 @@ function spawnAndAdvanceCitizens(world: WorldState, simDt: number): void {
   world.citizens = remaining;
 }
 
+/**
+ * Replans every cart and citizen after the road network changed. Movers that can
+ * no longer reach their destination are removed instead of crossing missing roads.
+ */
+export function rerouteLogistics(world: WorldState): void {
+  world.carts = world.carts.filter((cart) => {
+    const owner = world.buildings.find((b) => b.id === cart.ownerBuildingId);
+    const target = world.buildings.find((b) => b.id === cart.targetBuildingId);
+    if (!owner || !target) return false;
+    const delivering = cart.state === 'delivering';
+    const path = findRoadPathBetweenBuildings(
+      world,
+      delivering ? owner : target,
+      delivering ? target : owner,
+    );
+    if (!path) return false;
+    cart.path = path;
+    cart.segmentIndex = 0;
+    cart.segmentProgress = 0;
+    cart.worldX = path[0].x;
+    cart.worldY = path[0].y;
+    return true;
+  });
+
+  world.citizens = world.citizens.filter((citizen) => {
+    const origin = world.buildings.find((b) => b.id === citizen.originBuildingId);
+    const target = world.buildings.find((b) => b.id === citizen.targetBuildingId);
+    if (!origin || !target) return false;
+    const going = citizen.state === 'to_target';
+    const path = findRoadPathBetweenBuildings(
+      world,
+      going ? origin : target,
+      going ? target : origin,
+    );
+    if (!path) return false;
+    citizen.path = path;
+    citizen.segmentIndex = 0;
+    citizen.segmentProgress = 0;
+    citizen.worldX = path[0].x;
+    citizen.worldY = path[0].y;
+    return true;
+  });
+}
+
 export function stepSimulation(world: WorldState, simDt: number): void {
   if (simDt <= 0) return;
 
@@ -873,6 +941,9 @@ export function stepSimulation(world: WorldState, simDt: number): void {
   advanceWeather(world, simDt);
   advanceFires(world, simDt);
   const farmMultiplier = getFarmEfficiencyMultiplier(world.weather.kind);
+  const staffingRatio = getStaffingRatio(world);
+  world._logisticsTimer += simDt;
+  const logisticsDue = world._logisticsTimer >= 0.2;
 
   // 1. Update production cycles
   for (const b of world.buildings) {
@@ -883,7 +954,7 @@ export function stepSimulation(world: WorldState, simDt: number): void {
 
     const isFarm = b.type === 'wheat_farm' || b.type === 'vineyard';
     const effMultiplier = isFarm ? farmMultiplier : 1;
-    b.cycleProgress += (simDt * effMultiplier) / def.cycleSeconds;
+    b.cycleProgress += (simDt * effMultiplier * staffingRatio) / def.cycleSeconds;
     if (b.cycleProgress >= 1) {
       b.cycleProgress -= 1;
       if (def.consumes) {
@@ -948,11 +1019,18 @@ export function stepSimulation(world: WorldState, simDt: number): void {
     }
   }
 
-  // 3. Recompute statuses, taxes, upkeep, and victory/bankruptcy
-  recomputeStaticStatuses(world);
+  // 3. Recompute statuses, taxes, upkeep, and victory/bankruptcy (throttled to ~5 Hz)
+  if (logisticsDue) {
+    world._logisticsTimer = 0;
+    recomputeStaticStatuses(world);
+    if (world._lastReroutedRoadVersion !== world.roadVersion) {
+      rerouteLogistics(world);
+      world._lastReroutedRoadVersion = world.roadVersion;
+    }
+  }
 
   // 3b. Emit critical shortage or treasury notifications (throttled via dedupeKey)
-  if (world.elapsedSeconds >= 4) {
+  if (logisticsDue && world.elapsedSeconds >= 4) {
     const houseNoBread = world.buildings.find((b) => {
       const def = BUILDINGS[b.type];
       return def.isHousing && b.hasMarket && !b.hasBread;
@@ -1016,16 +1094,18 @@ export function stepSimulation(world: WorldState, simDt: number): void {
   }
 
   // 4. Auto-upgrade houses if enabled
-  if (world.autoUpgradeHouses) {
+  if (logisticsDue && world.autoUpgradeHouses) {
     upgradeAllReadyHouses(world);
   }
 
   // 5. Apply Denarii flow
   world.denarii += (world.netDenariiPerMin * simDt) / 60;
 
-  // 6. Dispatch and move carts & road-walking citizens
-  dispatchProducerCarts(world);
-  dispatchHorreumCarts(world);
+  // 6. Dispatch (throttled) and move carts & road-walking citizens
+  if (logisticsDue) {
+    dispatchProducerCarts(world);
+    dispatchHorreumCarts(world);
+  }
   advanceCarts(world, simDt);
   spawnAndAdvanceCitizens(world, simDt);
 
@@ -1112,6 +1192,7 @@ export function buildHudSnapshot(
     elapsedSeconds: Math.floor(world.elapsedSeconds),
     hasForum,
     readyUpgradeCount,
+    staffingRatio: getStaffingRatio(world),
     autoUpgradeHouses: world.autoUpgradeHouses,
     victoryAchieved: world.victoryAchieved,
     victoryDismissed: world.victoryDismissed,

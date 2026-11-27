@@ -1,14 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { BUILDINGS, VICTORY_GOALS } from './catalog';
 import { DAY_CYCLE_SECONDS, getDaylightColorFilter, getDayPhaseInfo } from './dayCycle';
 import { createStarterWorld, getTileIndex } from './mapGen';
 import { findRoadPathBetweenBuildings } from './pathfinding';
-import { MAX_SAVE_BYTES, deserializeWorld, serializeWorld } from './persistence';
+import {
+  MAX_SAVE_BYTES,
+  clearLocalSave,
+  deserializeWorld,
+  hasLocalSave,
+  loadSavedGame,
+  saveWorldToLocal,
+  serializeWorld,
+} from './persistence';
 import {
   buildHudSnapshot,
   canPlaceBuilding,
   demolishAt,
+  EXTINGUISH_COST,
   extinguishFire,
+  getStaffingRatio,
   placeBuilding,
   recomputeStaticStatuses,
   stepSimulation,
@@ -441,4 +452,143 @@ test('imported saves are validated: corrupted or hostile JSON is rejected or san
   // A sanitized world must still simulate without throwing
   stepSimulation(restored, 0.5);
   assert.ok(Number.isFinite(restored.denarii));
+});
+
+test('staffing ratio clamps understaffed workshops to 50% and reaches 100% with enough residents', () => {
+  const world = createStarterWorld(11701);
+  recomputeStaticStatuses(world);
+
+  const base = world.buildings.find((b) => b.type === 'woodcutter');
+  assert.ok(base);
+  for (let i = 0; i < 20; i++) {
+    world.buildings.push({ ...base, id: 9000 + i });
+  }
+  world.totalPopulation = 8;
+  assert.equal(getStaffingRatio(world), 0.5);
+  assert.ok(world.buildings.every((b) => b.roadConnected));
+
+  world.buildings = [base];
+  world.totalPopulation = 100;
+  assert.equal(getStaffingRatio(world), 1);
+});
+
+test('extinguishing a fire costs denarii and is refused when the treasury cannot pay', () => {
+  const world = createStarterWorld(11701);
+  const target = world.buildings.find((b) => b.type === 'woodcutter');
+  assert.ok(target);
+  target.onFireTimer = 12;
+
+  world.denarii = EXTINGUISH_COST - 1;
+  assert.equal(extinguishFire(world, target.id), false);
+  assert.equal(target.onFireTimer, 12);
+  assert.equal(world.denarii, EXTINGUISH_COST - 1);
+
+  world.denarii = 100;
+  assert.equal(extinguishFire(world, target.id), true);
+  assert.equal(target.onFireTimer, 0);
+  assert.equal(world.denarii, 100 - EXTINGUISH_COST);
+});
+
+test('demolishing a building refunds part of its denarii, wood and stone cost', () => {
+  const world = createStarterWorld(11701);
+  const target = world.buildings.find((b) => b.type === 'woodcutter');
+  assert.ok(target);
+  const def = BUILDINGS[target.type];
+  world.denarii = 500;
+  world.stock.wood = 10;
+  world.stock.stone = 10;
+
+  assert.equal(demolishAt(world, target.x, target.y), true);
+  assert.equal(world.denarii, 500 + Math.floor(def.costDenarii * 0.4));
+  assert.equal(world.stock.wood, 10 + Math.floor(def.costWood * 0.5));
+  assert.equal(world.stock.stone, 10 + Math.floor(def.costStone * 0.5));
+  assert.equal(world.buildings.some((b) => b.id === target.id), false);
+});
+
+test('deeply negative net income bankrupts the settlement', () => {
+  const world = createStarterWorld(11701);
+  world.buildings = world.buildings.filter(
+    (b) => b.type !== 'house_liberti' && b.type !== 'house_cives',
+  );
+  world.denarii = -400;
+  recomputeStaticStatuses(world);
+
+  assert.ok(world.netDenariiPerMin < 0);
+  assert.equal(world.bankrupt, true);
+});
+
+test('victory requirements can be relaxed for sandbox and custom scenarios', () => {
+  const saved = { ...VICTORY_GOALS };
+  try {
+    VICTORY_GOALS.targetPopulation = 1;
+    VICTORY_GOALS.targetCives = 0;
+    VICTORY_GOALS.requiresForum = false;
+    VICTORY_GOALS.requiresPositiveIncome = false;
+
+    const relaxed = createStarterWorld(11701);
+    recomputeStaticStatuses(relaxed);
+    assert.equal(relaxed.victoryAchieved, true);
+  } finally {
+    Object.assign(VICTORY_GOALS, saved);
+  }
+
+  const strict = createStarterWorld(11701);
+  recomputeStaticStatuses(strict);
+  assert.equal(strict.victoryAchieved, false, 'Default goals still require a Forum and positive income');
+});
+
+test('autosave backup recovers the previous save when the primary copy is corrupt', () => {
+  const store = new Map<string, string>();
+  const fakeStorage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+    removeItem: (key: string) => {
+      store.delete(key);
+    },
+    clear: () => store.clear(),
+    key: (index: number) => Array.from(store.keys())[index] ?? null,
+    get length() {
+      return store.size;
+    },
+  };
+  const globalWithStorage = globalThis as typeof globalThis & { localStorage?: Storage };
+  const hadStorage = 'localStorage' in globalWithStorage;
+  const original = globalWithStorage.localStorage;
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: fakeStorage as unknown as Storage,
+    configurable: true,
+  });
+
+  try {
+    const first = createStarterWorld(11701);
+    first.denarii = 777;
+    assert.equal(saveWorldToLocal(first), true);
+
+    const second = createStarterWorld(11702);
+    second.denarii = 888;
+    assert.equal(saveWorldToLocal(second), true);
+    assert.equal(hasLocalSave(), true);
+
+    store.set('aurea_pax_save_v1', '{ definitely not a save');
+    const result = loadSavedGame();
+    assert.equal(result.status, 'ok');
+    if (result.status === 'ok') {
+      assert.equal(result.recovered, true);
+      assert.equal(Math.round(result.world.denarii), 777);
+    }
+
+    clearLocalSave();
+    assert.equal(loadSavedGame().status, 'none');
+  } finally {
+    if (hadStorage) {
+      Object.defineProperty(globalThis, 'localStorage', {
+        value: original,
+        configurable: true,
+      });
+    } else {
+      delete (globalWithStorage as { localStorage?: Storage }).localStorage;
+    }
+  }
 });

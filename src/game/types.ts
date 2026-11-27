@@ -256,6 +256,9 @@ export interface WorldState {
   pendingNotifications: PendingGameNotification[];
   /** Internal accumulators for rate tracking & notification throttling */
   _rateWindowTimer: number;
+  /** Throttles logistics recalculation and replans movers after road edits */
+  _logisticsTimer: number;
+  _lastReroutedRoadVersion: number;
   _producedInWindow: Record<ResourceId, number>;
   _consumedInWindow: Record<ResourceId, number>;
   _notificationCooldowns: Record<string, number>;
@@ -279,6 +282,7 @@ export interface HudSnapshot {
   elapsedSeconds: number;
   hasForum: boolean;
   readyUpgradeCount: number;
+  staffingRatio: number;
   autoUpgradeHouses: boolean;
   victoryAchieved: boolean;
   victoryDismissed: boolean;
@@ -301,5 +305,7 @@ export interface SavePayload {
     | '_consumedInWindow'
     | 'pendingNotifications'
     | '_notificationCooldowns'
+    | '_logisticsTimer'
+    | '_lastReroutedRoadVersion'
   >;
 }

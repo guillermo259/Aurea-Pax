@@ -184,7 +184,6 @@ const TERRAIN_COLORS: Record<TerrainKind, [string, string]> = {
 
 function drawTerrainTile(
   ctx: CanvasRenderingContext2D,
-  world: WorldState,
   tile: Tile,
   sx: number,
   sy: number,
@@ -292,43 +291,55 @@ function drawTerrainTile(
     }
   }
 
-  // Roman Via Strata (connected flagstones)
-  if (tile.isRoad) {
-    drawIsoDiamond(ctx, sx, cy + 1, TILE_W * 0.88, TILE_H * 0.88);
-    ctx.fillStyle = '#6f695f';
-    ctx.fill();
+}
 
-    // Directional road arms toward neighboring roads or buildings
-    const dirs = [
-      { dx: 0, dy: -1, ox: 14, oy: 7 },
-      { dx: 1, dy: 0, ox: 14, oy: -7 },
-      { dx: 0, dy: 1, ox: -14, oy: -7 },
-      { dx: -1, dy: 0, ox: -14, oy: 7 },
-    ];
-    ctx.strokeStyle = '#7e786d';
-    ctx.lineWidth = 10;
-    ctx.lineCap = 'round';
-    for (const d of dirs) {
-      const nx = tile.x + d.dx;
-      const ny = tile.y + d.dy;
-      if (!inBounds(nx, ny, world.width, world.height)) continue;
-      const nb = world.tiles[getTileIndex(nx, ny, world.width)];
-      if (nb.isRoad || nb.buildingId !== null) {
-        const nIso = gridToIso(nx, ny);
-        ctx.beginPath();
-        ctx.moveTo(sx, cy + TILE_H * 0.5);
-        ctx.lineTo((sx + nIso.x) * 0.5, (cy + nIso.y) * 0.5 + TILE_H * 0.5);
-        ctx.stroke();
-      }
+/**
+ * Roads are drawn on their own cached layer so placing or demolishing a road
+ * only repaints the handful of road tiles instead of the whole terrain.
+ */
+function drawRoadTile(
+  ctx: CanvasRenderingContext2D,
+  world: WorldState,
+  tile: Tile,
+  sx: number,
+  sy: number,
+): void {
+  const cy = sy - tile.elevation * 5;
+
+  drawIsoDiamond(ctx, sx, cy + 1, TILE_W * 0.88, TILE_H * 0.88);
+  ctx.fillStyle = '#6f695f';
+  ctx.fill();
+
+  // Directional road arms toward neighboring roads or buildings
+  const dirs = [
+    { dx: 0, dy: -1 },
+    { dx: 1, dy: 0 },
+    { dx: 0, dy: 1 },
+    { dx: -1, dy: 0 },
+  ];
+  ctx.strokeStyle = '#7e786d';
+  ctx.lineWidth = 10;
+  ctx.lineCap = 'round';
+  for (const d of dirs) {
+    const nx = tile.x + d.dx;
+    const ny = tile.y + d.dy;
+    if (!inBounds(nx, ny, world.width, world.height)) continue;
+    const nb = world.tiles[getTileIndex(nx, ny, world.width)];
+    if (nb.isRoad || nb.buildingId !== null) {
+      const nIso = gridToIso(nx, ny);
+      ctx.beginPath();
+      ctx.moveTo(sx, cy + TILE_H * 0.5);
+      ctx.lineTo((sx + nIso.x) * 0.5, (cy + nIso.y) * 0.5 + TILE_H * 0.5);
+      ctx.stroke();
     }
-
-    // Center flagstone detail
-    ctx.fillStyle = '#979083';
-    ctx.beginPath();
-    ctx.ellipse(sx - 4, cy + 14, 4, 2, 0.2, 0, Math.PI * 2);
-    ctx.ellipse(sx + 5, cy + 17, 4.5, 2.2, -0.2, 0, Math.PI * 2);
-    ctx.fill();
   }
+
+  // Center flagstone detail
+  ctx.fillStyle = '#979083';
+  ctx.beginPath();
+  ctx.ellipse(sx - 4, cy + 14, 4, 2, 0.2, 0, Math.PI * 2);
+  ctx.ellipse(sx + 5, cy + 17, 4.5, 2.2, -0.2, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 function drawSmokePuff(
@@ -794,34 +805,26 @@ function drawServiceRadiusOverlay(
   ctx.restore();
 }
 
-interface TerrainCacheEntry {
+interface LayerCache {
   canvas: HTMLCanvasElement;
   minX: number;
   minY: number;
-  seed: number;
-  roadVersion: number;
-  width: number;
-  height: number;
+  key: string;
 }
 
-let terrainCache: TerrainCacheEntry | null = null;
+let terrainCache: LayerCache | null = null;
+let roadCache: LayerCache | null = null;
 
-/** Drops the cached terrain bitmap so a different save is never drawn with stale roads. */
+/** Drops cached layers so a different save is never drawn with stale terrain or roads. */
 export function invalidateTerrainCache(): void {
   terrainCache = null;
+  roadCache = null;
 }
 
-function getOrBuildTerrainCache(world: WorldState): TerrainCacheEntry {
-  if (
-    terrainCache &&
-    terrainCache.seed === world.seed &&
-    terrainCache.roadVersion === world.roadVersion &&
-    terrainCache.width === world.width &&
-    terrainCache.height === world.height
-  ) {
-    return terrainCache;
-  }
-
+function createLayerCanvas(
+  world: WorldState,
+  draw: (ctx: CanvasRenderingContext2D, tile: Tile, sx: number, sy: number) => void,
+): LayerCache {
   const minX = -world.height * (TILE_W * 0.5) - 32;
   const maxX = world.width * (TILE_W * 0.5) + 32;
   const minY = -32;
@@ -842,22 +845,63 @@ function getOrBuildTerrainCache(world: WorldState): TerrainCacheEntry {
         const y = diag - x;
         const tile = world.tiles[getTileIndex(x, y, world.width)];
         const iso = gridToIso(x, y);
-        drawTerrainTile(cctx, world, tile, iso.x, iso.y, 0);
+        draw(cctx, tile, iso.x, iso.y);
       }
     }
     cctx.restore();
   }
 
-  terrainCache = {
-    canvas,
-    minX,
-    minY,
-    seed: world.seed,
-    roadVersion: world.roadVersion,
-    width: world.width,
-    height: world.height,
-  };
-  return terrainCache;
+  return { canvas, minX, minY, key: '' };
+}
+
+function getOrBuildTerrainCache(world: WorldState): LayerCache {
+  const key = `${world.seed}:${world.width}x${world.height}`;
+  if (terrainCache?.key === key) return terrainCache;
+  const layer = createLayerCanvas(world, (ctx, tile, sx, sy) =>
+    drawTerrainTile(ctx, tile, sx, sy, 0),
+  );
+  layer.key = key;
+  terrainCache = layer;
+  return layer;
+}
+
+function getOrBuildRoadCache(world: WorldState): LayerCache {
+  const key = `${world.seed}:${world.width}x${world.height}:${world.roadVersion}`;
+  if (roadCache?.key === key) return roadCache;
+  const layer = createLayerCanvas(world, (ctx, tile, sx, sy) => {
+    if (tile.isRoad) drawRoadTile(ctx, world, tile, sx, sy);
+  });
+  layer.key = key;
+  roadCache = layer;
+  return layer;
+}
+
+function blitLayer(
+  ctx: CanvasRenderingContext2D,
+  layer: LayerCache,
+  viewLeft: number,
+  viewTop: number,
+  viewW: number,
+  viewH: number,
+): void {
+  const srcX = Math.max(0, Math.floor(viewLeft - layer.minX));
+  const srcY = Math.max(0, Math.floor(viewTop - layer.minY));
+  const srcRight = Math.min(layer.canvas.width, Math.ceil(viewLeft + viewW - layer.minX));
+  const srcBottom = Math.min(layer.canvas.height, Math.ceil(viewTop + viewH - layer.minY));
+  const srcW = srcRight - srcX;
+  const srcH = srcBottom - srcY;
+  if (srcW <= 0 || srcH <= 0) return;
+  ctx.drawImage(
+    layer.canvas,
+    srcX,
+    srcY,
+    srcW,
+    srcH,
+    layer.minX + srcX,
+    layer.minY + srcY,
+    srcW,
+    srcH,
+  );
 }
 
 export function renderWorld(
@@ -880,33 +924,13 @@ export function renderWorld(
   ctx.translate(widthPx * 0.5 - camera.x * camera.zoom, heightPx * 0.5 - camera.y * camera.zoom);
   ctx.scale(camera.zoom, camera.zoom);
 
-  // 1. Blit only the visible portion of cached terrain & flagstones
-  const cache = getOrBuildTerrainCache(world);
+  // 1. Blit only the visible portion of the cached terrain and road layers
   const viewLeft = camera.x - (widthPx * 0.5) / camera.zoom;
   const viewTop = camera.y - (heightPx * 0.5) / camera.zoom;
   const viewW = widthPx / camera.zoom;
   const viewH = heightPx / camera.zoom;
-
-  const srcX = Math.max(0, Math.floor(viewLeft - cache.minX));
-  const srcY = Math.max(0, Math.floor(viewTop - cache.minY));
-  const srcRight = Math.min(cache.canvas.width, Math.ceil(viewLeft + viewW - cache.minX));
-  const srcBottom = Math.min(cache.canvas.height, Math.ceil(viewTop + viewH - cache.minY));
-  const srcW = srcRight - srcX;
-  const srcH = srcBottom - srcY;
-
-  if (srcW > 0 && srcH > 0) {
-    ctx.drawImage(
-      cache.canvas,
-      srcX,
-      srcY,
-      srcW,
-      srcH,
-      cache.minX + srcX,
-      cache.minY + srcY,
-      srcW,
-      srcH,
-    );
-  }
+  blitLayer(ctx, getOrBuildTerrainCache(world), viewLeft, viewTop, viewW, viewH);
+  blitLayer(ctx, getOrBuildRoadCache(world), viewLeft, viewTop, viewW, viewH);
 
   // Subtle animated Mediterranean water shimmer along sparse water tiles
   ctx.strokeStyle = 'rgba(205, 240, 248, 0.22)';

@@ -3,6 +3,7 @@ import {
   ArrowUpCircle,
   BookOpen,
   Hammer,
+  ListChecks,
   MousePointer,
   Pause,
   Play,
@@ -17,6 +18,8 @@ import {
   Sunrise,
   Sunset,
   Moon,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { BUILDINGS, BUILD_MENU_GROUPS, RESOURCE_META, VICTORY_GOALS } from '../game/catalog';
 import { getDayPhaseInfo } from '../game/dayCycle';
@@ -39,6 +42,10 @@ interface GameHudProps {
   onToggleMute: () => void;
   saveFeedback: string | null;
   placementTooltip: string | null;
+  objectivesDone: number;
+  objectivesTotal: number;
+  onOpenObjectives: () => void;
+  onZoom: (factor: number) => void;
 }
 
 const TOP_RESOURCES: Array<'wood' | 'stone' | 'bread' | 'wine' | 'pottery'> = [
@@ -65,6 +72,10 @@ export const GameHud: React.FC<GameHudProps> = ({
   onToggleMute,
   saveFeedback,
   placementTooltip,
+  objectivesDone,
+  objectivesTotal,
+  onOpenObjectives,
+  onZoom,
 }) => {
   const currentGroup =
     BUILD_MENU_GROUPS.find((g) => g.category === activeCategory) ?? BUILD_MENU_GROUPS[0];
@@ -185,11 +196,36 @@ export const GameHud: React.FC<GameHudProps> = ({
             </span>
           </div>
 
+          {/* Zoom controls (also usable on touch devices without a wheel) */}
+          <div className="flex items-center bg-[#120f0c] rounded border border-[#b78e4a]/25 p-0.5 shrink-0">
+            <button
+              type="button"
+              aria-label="Alejar mapa"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onZoom(0.89);
+              }}
+              className="p-1 rounded text-[#d1c5b4] hover:text-[#fff6e8] cursor-pointer"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              aria-label="Acercar mapa"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onZoom(1.12);
+              }}
+              className="p-1 rounded text-[#d1c5b4] hover:text-[#fff6e8] cursor-pointer"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
           {/* Speed controls */}
           <div className="flex items-center bg-[#120f0c] rounded border border-[#b78e4a]/25 p-0.5 shrink-0">
             <button
               type="button"
-              tabIndex={-1}
               aria-label="Pausar simulación"
               onClick={(e) => {
                 e.currentTarget.blur();
@@ -207,8 +243,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               <button
                 key={spd}
                 type="button"
-                tabIndex={-1}
-                aria-label={`Velocidad ${spd}x`}
+                  aria-label={`Velocidad ${spd}x`}
                 onClick={(e) => {
                   e.currentTarget.blur();
                   onSetSpeed(spd);
@@ -314,8 +349,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 <button
                   key={group.category}
                   type="button"
-                  tabIndex={-1}
-                  onClick={(e) => {
+                      onClick={(e) => {
                     e.currentTarget.blur();
                     onSelectCategory(group.category);
                     if (toolMode.kind !== 'build') {
@@ -338,8 +372,7 @@ export const GameHud: React.FC<GameHudProps> = ({
             {hud.readyUpgradeCount > 0 && (
               <button
                 type="button"
-                tabIndex={-1}
-                onClick={(e) => {
+                  onClick={(e) => {
                   e.currentTarget.blur();
                   onUpgradeAll();
                 }}
@@ -352,7 +385,6 @@ export const GameHud: React.FC<GameHudProps> = ({
 
             <button
               type="button"
-              tabIndex={-1}
               onClick={(e) => {
                 e.currentTarget.blur();
                 onToggleAutoUpgrade();
@@ -368,7 +400,6 @@ export const GameHud: React.FC<GameHudProps> = ({
 
             <button
               type="button"
-              tabIndex={-1}
               onClick={(e) => {
                 e.currentTarget.blur();
                 onSelectTool({ kind: 'inspect' });
@@ -385,7 +416,20 @@ export const GameHud: React.FC<GameHudProps> = ({
 
             <button
               type="button"
-              tabIndex={-1}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onOpenObjectives();
+              }}
+              className="px-2 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 bg-[#262019] text-[#d6c9b4] hover:bg-[#322a21]"
+            >
+              <ListChecks className="w-3.5 h-3.5" />
+              <span>
+                Objetivos ({objectivesDone}/{objectivesTotal})
+              </span>
+            </button>
+
+            <button
+              type="button"
               onClick={(e) => {
                 e.currentTarget.blur();
                 onSelectTool({ kind: 'upgrade' });
@@ -402,7 +446,6 @@ export const GameHud: React.FC<GameHudProps> = ({
 
             <button
               type="button"
-              tabIndex={-1}
               onClick={(e) => {
                 e.currentTarget.blur();
                 onSelectTool({ kind: 'demolish' });
@@ -434,8 +477,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               <button
                 key={bType}
                 type="button"
-                tabIndex={-1}
-                onClick={(e) => {
+                  onClick={(e) => {
                   e.currentTarget.blur();
                   onSelectTool({ kind: 'build', buildingType: bType });
                 }}

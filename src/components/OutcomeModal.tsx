@@ -21,6 +21,7 @@ export const OutcomeModal: React.FC<OutcomeModalProps> = ({
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/65 p-4">
       <div
         role="dialog"
+        aria-modal="true"
         aria-label={isVictory ? 'Victoria del Senado' : 'Bancarrota'}
         className="w-full max-w-md rounded-lg bg-[#191511] border border-[#c9953c]/60 shadow-2xl p-6 text-[#f4ede0]"
       >
@@ -60,6 +61,7 @@ export const OutcomeModal: React.FC<OutcomeModalProps> = ({
           {isVictory && (
             <button
               type="button"
+              autoFocus
               onClick={onContinueSandbox}
               className="flex-1 py-2.5 px-4 rounded font-semibold text-sm bg-[#c9953c] text-[#17120c] hover:bg-[#dba84f] cursor-pointer"
             >
@@ -69,6 +71,7 @@ export const OutcomeModal: React.FC<OutcomeModalProps> = ({
           <button
             type="button"
             data-start="true"
+            autoFocus={!isVictory}
             onClick={onRestart}
             className={`flex-1 py-2.5 px-4 rounded font-semibold text-sm cursor-pointer ${
               isVictory

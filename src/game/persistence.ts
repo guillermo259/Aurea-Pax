@@ -15,7 +15,9 @@ import {
 } from './types';
 
 const STORAGE_KEY = 'aurea_pax_save_v1';
+const BACKUP_KEY = 'aurea_pax_save_backup_v1';
 const SAVE_VERSION = 1;
+const MIN_SAVE_VERSION = 1;
 
 /** Reject oversized saves/imports before parsing so a huge file cannot freeze the tab. */
 export const MAX_SAVE_BYTES = 8 * 1024 * 1024;
@@ -330,6 +332,8 @@ export function serializeWorld(world: WorldState): SavePayload {
     _consumedInWindow,
     pendingNotifications,
     _notificationCooldowns,
+    _logisticsTimer,
+    _lastReroutedRoadVersion,
     ...rest
   } = world;
   return {
@@ -363,6 +367,11 @@ function invalidSave(): never {
   throw new Error('Archivo de partida inválido o incompatible.');
 }
 
+/** Version seam: v1 is current. Add stepwise migrations here when the schema changes. */
+function migrateSavePayload(world: Record<string, unknown>): Record<string, unknown> {
+  return world;
+}
+
 /**
  * Rebuilds a world from untrusted JSON (imported file or localStorage), rejecting
  * structurally broken saves and sanitizing every field so a tampered file cannot
@@ -380,11 +389,15 @@ export function deserializeWorld(rawJson: string): WorldState {
     invalidSave();
   }
 
-  if (!isRecord(parsed) || parsed.version !== SAVE_VERSION || !isRecord(parsed.world)) {
+  if (!isRecord(parsed) || !isRecord(parsed.world)) {
+    invalidSave();
+  }
+  const version = parsed.version;
+  if (typeof version !== 'number' || version < MIN_SAVE_VERSION || version > SAVE_VERSION) {
     invalidSave();
   }
 
-  const raw = parsed.world;
+  const raw = migrateSavePayload(parsed.world);
   const width = raw.width;
   const height = raw.height;
   if (
@@ -455,6 +468,8 @@ export function deserializeWorld(rawJson: string): WorldState {
     _producedInWindow: emptyResourceRecord(),
     _consumedInWindow: emptyResourceRecord(),
     _notificationCooldowns: {},
+    _logisticsTimer: 0,
+    _lastReroutedRoadVersion: 0,
   };
 
   recomputeStaticStatuses(world);
@@ -463,21 +478,59 @@ export function deserializeWorld(rawJson: string): WorldState {
 
 export function saveWorldToLocal(world: WorldState): boolean {
   try {
-    const payload = serializeWorld(world);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+    const payload = JSON.stringify(serializeWorld(world));
+    const previous = localStorage.getItem(STORAGE_KEY);
+    if (previous) {
+      try {
+        JSON.parse(previous);
+        localStorage.setItem(BACKUP_KEY, previous);
+      } catch {
+        // Never promote a corrupt save to the backup slot.
+      }
+    }
+    localStorage.setItem(STORAGE_KEY, payload);
     return true;
   } catch {
     return false;
   }
 }
 
-export function loadWorldFromLocal(): WorldState | null {
+export type SavedGameLoadResult =
+  | { status: 'ok'; world: WorldState; recovered: boolean }
+  | { status: 'corrupt'; message: string }
+  | { status: 'none' };
+
+/** Loads the primary save, falling back to the previous autosave if it is damaged. */
+export function loadSavedGame(): SavedGameLoadResult {
+  let primary: string | null = null;
+  let backup: string | null = null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? deserializeWorld(raw) : null;
+    primary = localStorage.getItem(STORAGE_KEY);
+    backup = localStorage.getItem(BACKUP_KEY);
   } catch {
-    return null;
+    return { status: 'corrupt', message: 'El almacenamiento local no está disponible.' };
   }
+
+  if (!primary && !backup) return { status: 'none' };
+
+  if (primary) {
+    try {
+      return { status: 'ok', world: deserializeWorld(primary), recovered: false };
+    } catch {
+      // Fall through to the backup copy.
+    }
+  }
+  if (backup) {
+    try {
+      return { status: 'ok', world: deserializeWorld(backup), recovered: true };
+    } catch {
+      // Both copies are unusable.
+    }
+  }
+  return {
+    status: 'corrupt',
+    message: 'La partida guardada está dañada y no hay una copia de seguridad válida.',
+  };
 }
 
 export function hasLocalSave(): boolean {
@@ -491,6 +544,7 @@ export function hasLocalSave(): boolean {
 export function clearLocalSave(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(BACKUP_KEY);
   } catch {
     // ignore storage errors
   }
