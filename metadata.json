@@ -1,0 +1,6 @@
+{
+  "name": "Aurea Pax — Constructor Romano",
+  "description": "Juego de construcción y logística urbana romana en vista isométrica 2D inspirado en Anno 117: Pax Romana.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
