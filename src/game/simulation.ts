@@ -1,5 +1,6 @@
 import {
   ALERT_LABELS,
+  MAX_BUILDINGS,
   BUILDINGS,
   RESOURCE_META,
   RESOURCE_ORDER,
@@ -271,6 +272,9 @@ export function canPlaceBuilding(
   y: number,
 ): PlacementCheckResult {
   const def = BUILDINGS[type];
+  if (type !== 'road' && world.buildings.length >= MAX_BUILDINGS) {
+    return { ok: false, reason: 'Se ha alcanzado el límite de edificios de la colonia' };
+  }
   if (x < 0 || y < 0 || x + def.size > world.width || y + def.size > world.height) {
     return { ok: false, reason: 'Fuera del mapa' };
   }
@@ -921,8 +925,10 @@ function nextCitizenRand(world: WorldState): number {
   return res.value;
 }
 
+export const MAX_CITIZENS = 18;
+
 function spawnAndAdvanceCitizens(world: WorldState, simDt: number): void {
-  const maxCitizens = Math.min(18, Math.max(3, Math.floor(world.totalPopulation / 4) + 1));
+  const maxCitizens = Math.min(MAX_CITIZENS, Math.max(3, Math.floor(world.totalPopulation / 4) + 1));
   world.citizenSpawnTimer -= simDt;
 
   if (world.citizenSpawnTimer <= 0 && world.citizens.length < maxCitizens) {

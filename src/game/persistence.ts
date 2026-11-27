@@ -1,11 +1,11 @@
-import { BUILDINGS, RESOURCE_ORDER, WHEAT_HARVESTS_PER_SOWING } from './catalog';
+import { BUILDINGS, MAX_BUILDINGS, RESOURCE_ORDER, WHEAT_HARVESTS_PER_SOWING } from './catalog';
 import {
   defaultTileReserve,
   emptyResourceRecord,
   getTileIndex,
   revealAround,
 } from './mapGen';
-import { recomputeStaticStatuses } from './simulation';
+import { MAX_CITIZENS, recomputeStaticStatuses } from './simulation';
 import {
   BuildingType,
   Cart,
@@ -65,14 +65,17 @@ function toBoolean(value: unknown, fallback = false): boolean {
 }
 
 /** Keeps a valid unique positive id, otherwise assigns the next free one. */
-function sanitizeId(value: unknown, used: Set<number>): number {
-  let id =
-    typeof value === 'number' && Number.isInteger(value) && value > 0 && !used.has(value)
-      ? value
-      : 1;
-  while (used.has(id)) id += 1;
-  used.add(id);
-  return id;
+function createIdAllocator() {
+  const used = new Set<number>();
+  let nextFree = 1;
+  return (value: unknown): number => {
+    while (used.has(nextFree)) nextFree++;
+    const valid = typeof value === 'number' && Number.isSafeInteger(value) &&
+      value > 0 && value <= MAX_COUNTER && !used.has(value);
+    const id = valid ? value : nextFree;
+    used.add(id);
+    return id;
+  };
 }
 
 function sanitizeStock(value: unknown): Record<ResourceId, number> {
@@ -174,13 +177,13 @@ function sanitizeBuildings(
   if (!Array.isArray(value)) return [];
 
   const claimed = new Set<number>();
-  const usedIds = new Set<number>();
+  const allocateId = createIdAllocator();
   const buildings: PlacedBuilding[] = [];
 
   for (const raw of value) {
     if (!isRecord(raw)) continue;
     const rawType = raw.type;
-    if (typeof rawType !== 'string' || !Object.prototype.hasOwnProperty.call(BUILDINGS, rawType)) {
+    if (rawType === 'road' || typeof rawType !== 'string' || !Object.prototype.hasOwnProperty.call(BUILDINGS, rawType)) {
       continue;
     }
     const type = rawType as BuildingType;
@@ -221,7 +224,7 @@ function sanitizeBuildings(
         : true
       : false;
     const building: PlacedBuilding = {
-      id: sanitizeId(raw.id, usedIds),
+      id: allocateId(raw.id),
       type,
       x,
       y,
@@ -273,7 +276,7 @@ function sanitizeCarts(
 ): Cart[] {
   if (!Array.isArray(value)) return [];
   const buildingIds = new Set(buildings.map((b) => b.id));
-  const usedIds = new Set<number>();
+  const allocateId = createIdAllocator();
   const carts: Cart[] = [];
 
   for (const raw of value) {
@@ -296,7 +299,7 @@ function sanitizeCarts(
     if (!path) continue;
 
     carts.push({
-      id: sanitizeId(raw.id, usedIds),
+      id: allocateId(raw.id),
       ownerBuildingId,
       targetBuildingId,
       cargo: rawCargo as ResourceId,
@@ -319,7 +322,7 @@ function sanitizeCitizens(
 ): Citizen[] {
   if (!Array.isArray(value)) return [];
   const buildingIds = new Set(buildings.map((b) => b.id));
-  const usedIds = new Set<number>();
+  const allocateId = createIdAllocator();
   const citizens: Citizen[] = [];
 
   for (const raw of value) {
@@ -338,7 +341,7 @@ function sanitizeCitizens(
     if (!path) continue;
 
     citizens.push({
-      id: sanitizeId(raw.id, usedIds),
+      id: allocateId(raw.id),
       role: raw.role === 'ciudadano' ? 'ciudadano' : 'peon',
       originBuildingId,
       targetBuildingId,
@@ -413,7 +416,9 @@ function migrateSavePayload(world: Record<string, unknown>): Record<string, unkn
  * inject invalid tiles, buildings or NaN values into the simulation.
  */
 export function deserializeWorld(rawJson: string): WorldState {
-  if (rawJson.length > MAX_SAVE_BYTES) {
+  // UTF-8 can use up to three bytes per UTF-16 code unit.
+  if (rawJson.length > MAX_SAVE_BYTES ||
+      (rawJson.length > MAX_SAVE_BYTES / 3 && new Blob([rawJson]).size > MAX_SAVE_BYTES)) {
     throw new Error('El archivo de partida es demasiado grande (máximo 8 MB).');
   }
 
@@ -428,7 +433,7 @@ export function deserializeWorld(rawJson: string): WorldState {
     invalidSave();
   }
   const version = parsed.version;
-  if (typeof version !== 'number' || version < MIN_SAVE_VERSION || version > SAVE_VERSION) {
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < MIN_SAVE_VERSION || version > SAVE_VERSION) {
     invalidSave();
   }
 
@@ -453,7 +458,11 @@ export function deserializeWorld(rawJson: string): WorldState {
   const tiles = sanitizeTiles(raw.tiles, width, height, seed, legacySave);
   if (!tiles) invalidSave();
 
+  // Bound collections before footprint checks, route copying and service calculations.
+  if (Array.isArray(raw.buildings) && raw.buildings.length > Math.min(width * height, MAX_BUILDINGS)) invalidSave();
+  if (Array.isArray(raw.citizens) && raw.citizens.length > MAX_CITIZENS) invalidSave();
   const buildings = sanitizeBuildings(raw.buildings, width, height, tiles);
+  if (Array.isArray(raw.carts) && raw.carts.length > buildings.length * 3) invalidSave();
   const carts = sanitizeCarts(raw.carts, width, height, buildings);
   const citizens = sanitizeCitizens(raw.citizens, width, height, buildings);
 
@@ -531,10 +540,11 @@ export function deserializeWorld(rawJson: string): WorldState {
 export function saveWorldToLocal(world: WorldState): boolean {
   try {
     const payload = JSON.stringify(serializeWorld(world));
+    if (new Blob([payload]).size > MAX_SAVE_BYTES) return false;
     const previous = localStorage.getItem(STORAGE_KEY);
     if (previous) {
       try {
-        JSON.parse(previous);
+        deserializeWorld(previous);
         localStorage.setItem(BACKUP_KEY, previous);
       } catch {
         // Never promote a corrupt save to the backup slot.
@@ -587,7 +597,7 @@ export function loadSavedGame(): SavedGameLoadResult {
 
 export function hasLocalSave(): boolean {
   try {
-    return Boolean(localStorage.getItem(STORAGE_KEY));
+    return Boolean(localStorage.getItem(STORAGE_KEY) || localStorage.getItem(BACKUP_KEY));
   } catch {
     return false;
   }

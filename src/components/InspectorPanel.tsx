@@ -42,7 +42,7 @@ const StatRow: React.FC<{
   <div className="flex items-center justify-between gap-2" title={label}>
     <span className="flex items-center gap-1.5 text-[#b9aa94]">
       <HugeIcon icon={icon} size={15} aria-hidden="true" />
-      <span className="sr-only">{label}</span>
+      <span>{label}</span>
     </span>
     <span className={`font-mono-num ${valueClassName}`}>{value}</span>
   </div>
@@ -56,7 +56,7 @@ const ResourceStatRow: React.FC<{
   <div className="flex items-center justify-between gap-2" title={label}>
     <span className="flex items-center gap-1.5 text-[#b9aa94]">
       <ResourceIcon resource={resource} className="w-3.5 h-3.5" />
-      <span className="sr-only">{label}</span>
+      <span>{label}</span>
     </span>
     <span className="font-mono-num">{value}</span>
   </div>
@@ -91,7 +91,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
     const origin = allBuildings.find((b) => b.id === cart.ownerBuildingId);
     const target = allBuildings.find((b) => b.id === cart.targetBuildingId);
     return (
-      <aside className="fixed right-3 top-28 z-20 w-72 rounded-lg bg-[#191511]/95 border border-[#b78e4a]/45 shadow-2xl p-4 text-sm text-[#f4ede0]">
+      <aside className="inspector roman-scroll fixed right-3 top-28 z-20 w-72 rounded-lg bg-[#191511]/95 border border-[#b78e4a]/45 shadow-2xl p-4 text-sm text-[#f4ede0]">
         <div className="flex items-start justify-between gap-2 pb-3 mb-3 border-b border-[#b78e4a]/25">
           <div>
             <h3 className="font-display text-base font-bold text-[#f4ca64]">
@@ -156,7 +156,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
   ];
 
   return (
-    <aside className="fixed right-3 top-28 z-20 w-80 rounded-lg bg-[#191511]/95 border border-[#b78e4a]/45 shadow-2xl p-4 text-sm text-[#f4ede0]">
+    <aside className="inspector roman-scroll fixed right-3 top-28 z-20 w-80 rounded-lg bg-[#191511]/95 border border-[#b78e4a]/45 shadow-2xl p-4 text-sm text-[#f4ede0]">
       <div className="flex items-start justify-between gap-2 pb-3 mb-3 border-b border-[#b78e4a]/25">
         <div className="flex items-center gap-2.5">
           <BuildingIcon type={building.type} className="w-8 h-8 shrink-0" />
@@ -237,16 +237,11 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               <div className="flex items-center justify-between mb-1">
                 <span className="flex items-center gap-1.5 text-[#b9aa94]">
                   <HugeIcon icon={Clock01Icon} size={14} aria-hidden="true" />
-                  <span className="sr-only">Ciclo de trabajo</span>
+                  <span>Ciclo de trabajo</span>
                 </span>
                 <span className="font-mono-num">{Math.round(building.cycleProgress * 100)}%</span>
               </div>
-              <div className="w-full h-1.5 rounded bg-[#2d261e] overflow-hidden">
-                <div
-                  className="h-full bg-[#d4a656]"
-                  style={{ width: `${Math.round(building.cycleProgress * 100)}%` }}
-                />
-              </div>
+              <progress className="roman-progress" aria-label="Ciclo de trabajo" max={1} value={building.cycleProgress} />
             </div>
           </>
         )}
@@ -319,7 +314,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
           <div className="pt-2 border-t border-[#b78e4a]/20 space-y-1.5">
             <div className="flex items-center gap-1.5 text-[#d4a656]" title="Existencias del Mercado">
               <HugeIcon icon={Store01Icon} size={14} aria-hidden="true" />
-              <span className="sr-only">Existencias del Mercado</span>
+              <span>Existencias del Mercado</span>
             </div>
             {(['bread', 'wine', 'pottery'] as ResourceId[]).map((good) => (
               <div
@@ -329,7 +324,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({
               >
                 <span className="flex items-center gap-1.5 text-[#cfc3b0]">
                   <ResourceIcon resource={good} className="w-3.5 h-3.5" />
-                  <span className="sr-only">{RESOURCE_META[good].label}</span>
+                  <span>{RESOURCE_META[good].label}</span>
                 </span>
                 <span className="font-mono-num">
                   {(building.marketStock[good] ?? 0).toFixed(1)}

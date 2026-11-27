@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
+  AlertCircleIcon,
   ArrowUp02Icon,
   BookOpen01Icon,
   CheckListIcon,
@@ -89,13 +90,26 @@ export const GameHud: React.FC<GameHudProps> = ({
   const currentGroup =
     BUILD_MENU_GROUPS.find((g) => g.category === activeCategory) ?? BUILD_MENU_GROUPS[0];
   const dayInfo = getDayPhaseInfo(hud.dayTime);
+  const selectedBuilding = toolMode.kind === 'build' ? toolMode.buildingType : null;
+  const selectedBuildingButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    selectedBuildingButton.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [selectedBuilding]);
 
   return (
-    <div className="fixed inset-0 z-10 pointer-events-none flex flex-col justify-between p-3">
+    <div
+      className="game-hud fixed inset-0 z-10 pointer-events-none flex flex-col justify-between p-3"
+      onClickCapture={(event) => {
+        if (event.detail === 0 || !(event.target instanceof Element)) return;
+        const button = event.target.closest('button');
+        // Pointer controls return keyboard input to the map. Dialogs restore focus to their opener.
+        if (button && !button.hasAttribute('aria-haspopup')) button.blur();
+      }}
+    >
       {/* Top Perimeter Resource & Senate Bar */}
-      <div className="pointer-events-auto w-full flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 px-3 py-1.5 rounded-lg bg-[#191511]/95 border border-[#b78e4a]/35 shadow-xl">
+      <div className="hud-bar pointer-events-auto w-full flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 px-3 py-1.5 rounded-lg bg-[#191511]/95 border border-[#b78e4a]/35 shadow-xl">
         {/* Left: Denarii, Population & Stock */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+        <div className="hud-summary flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
           <div
             className="flex items-center gap-1.5"
             title={`Denarios: ${hud.denarii} (${hud.netDenariiPerMin >= 0 ? '+' : ''}${hud.netDenariiPerMin}/min)`}
@@ -107,6 +121,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               className="text-[#e6b85c] shrink-0"
               aria-hidden="true"
             />
+            <span className="text-xs text-[#dccba7]">Denarios</span>
             <span className="font-mono-num text-lg font-semibold text-[#f3c667]">
               {hud.denarii}
             </span>
@@ -133,6 +148,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               className="text-[#cbbd9f] shrink-0"
               aria-hidden="true"
             />
+            <span className="text-xs text-[#ded9c9]">Población</span>
             <span className="font-mono-num text-lg font-semibold text-[#f6efe2]">
               {hud.totalPopulation}
             </span>
@@ -245,10 +261,8 @@ export const GameHud: React.FC<GameHudProps> = ({
             <button
               type="button"
               aria-label="Alejar mapa"
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onZoom(0.89);
-              }}
+              title="Alejar mapa (−)"
+              onClick={() => onZoom(1 / 1.12)}
               className="p-1 rounded text-[#d1c5b4] hover:text-[#fff6e8] cursor-pointer"
             >
               <HugeIcon icon={ZoomOutAreaIcon} size={15} aria-hidden="true" />
@@ -256,10 +270,8 @@ export const GameHud: React.FC<GameHudProps> = ({
             <button
               type="button"
               aria-label="Acercar mapa"
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onZoom(1.12);
-              }}
+              title="Acercar mapa (+)"
+              onClick={() => onZoom(1.12)}
               className="p-1 rounded text-[#d1c5b4] hover:text-[#fff6e8] cursor-pointer"
             >
               <HugeIcon icon={ZoomInAreaIcon} size={15} aria-hidden="true" />
@@ -267,14 +279,14 @@ export const GameHud: React.FC<GameHudProps> = ({
           </div>
 
           {/* Speed controls */}
-          <div className="flex items-center bg-[#120f0c] rounded border border-[#b78e4a]/25 p-0.5 shrink-0">
+          <div title="Cambiar velocidad (V)" className="flex items-center bg-[#120f0c] rounded border border-[#b78e4a]/25 p-0.5 shrink-0">
             <button
               type="button"
+              aria-pressed={hud.speed === 0}
               aria-label="Pausar simulación"
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onSetSpeed(0);
-              }}
+              aria-keyshortcuts="Space"
+              title="Pausar simulación (Espacio)"
+              onClick={() => onSetSpeed(0)}
               className={`px-1.5 py-1 rounded text-xs font-medium flex items-center cursor-pointer whitespace-nowrap shrink-0 ${
                 hud.speed === 0
                   ? 'bg-[#c9953c] text-[#17120c]'
@@ -287,11 +299,9 @@ export const GameHud: React.FC<GameHudProps> = ({
               <button
                 key={spd}
                 type="button"
-                  aria-label={`Velocidad ${spd}x`}
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onSetSpeed(spd);
-                }}
+                aria-pressed={hud.speed === spd}
+                aria-label={`Velocidad ${spd}x`}
+                onClick={() => onSetSpeed(spd)}
                 className={`px-1.5 py-1 rounded text-xs font-mono-num font-semibold cursor-pointer whitespace-nowrap shrink-0 ${
                   hud.speed === spd
                     ? 'bg-[#c9953c] text-[#17120c]'
@@ -318,11 +328,10 @@ export const GameHud: React.FC<GameHudProps> = ({
           <button
             type="button"
             aria-label={`Abrir cuentas${hud.alerts.length > 0 ? ` (${hud.alerts.length} avisos)` : ''}`}
-            title="Cuentas y avisos"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onToggleLedger();
-            }}
+            title="Cuentas y avisos (B)"
+            aria-keyshortcuts="B"
+            aria-haspopup="dialog"
+            onClick={onToggleLedger}
             className="relative p-1.5 rounded bg-[#28221b] text-[#f3eadb] border border-[#b78e4a]/40 hover:bg-[#342c23] flex items-center justify-center cursor-pointer shrink-0"
           >
             <HugeIcon icon={BookOpen01Icon} size={15} className="text-[#d4a656]" aria-hidden="true" />
@@ -336,17 +345,15 @@ export const GameHud: React.FC<GameHudProps> = ({
           <button
             type="button"
             aria-label="Guardar partida"
-            title={saveFeedback ?? 'Guardar partida'}
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onSaveNow();
-            }}
+            title={saveFeedback ?? 'Guardar partida (G)'}
+            aria-keyshortcuts="G Control+S Meta+S"
+            onClick={onSaveNow}
             className="p-1.5 rounded bg-[#28221b] text-[#f3eadb] border border-[#b78e4a]/35 hover:bg-[#342c23] flex items-center justify-center cursor-pointer shrink-0"
           >
             <HugeIcon
-              icon={saveFeedback ? CheckmarkCircle02Icon : FloppyDiskIcon}
+              icon={saveFeedback === 'Error' ? AlertCircleIcon : saveFeedback ? CheckmarkCircle02Icon : FloppyDiskIcon}
               size={15}
-              className={saveFeedback ? 'text-[#89c983]' : 'text-[#d4a656]'}
+              className={saveFeedback === 'Error' ? 'text-[#f08b78]' : saveFeedback ? 'text-[#89c983]' : 'text-[#d4a656]'}
               aria-hidden="true"
             />
           </button>
@@ -354,11 +361,9 @@ export const GameHud: React.FC<GameHudProps> = ({
           <button
             type="button"
             aria-label={muted ? 'Activar sonido' : 'Silenciar sonido'}
-            title={muted ? 'Activar sonido' : 'Silenciar sonido'}
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onToggleMute();
-            }}
+            title={muted ? 'Activar sonido (M)' : 'Silenciar sonido (M)'}
+            aria-keyshortcuts="M"
+            onClick={onToggleMute}
             className="p-1.5 rounded bg-[#28221b] text-[#d6c9b4] border border-[#b78e4a]/30 hover:text-[#fff6e8] cursor-pointer shrink-0"
           >
             <HugeIcon
@@ -371,12 +376,11 @@ export const GameHud: React.FC<GameHudProps> = ({
           <button
             type="button"
             aria-label="Abrir menú de pausa"
-            title="Menú de pausa"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onOpenPauseMenu();
-            }}
-            className="p-1.5 rounded bg-[#28221b] text-[#d6c9b4] border border-[#b78e4a]/30 hover:text-[#fff6e8] cursor-pointer shrink-0"
+            title="Menú de pausa (P / Esc)"
+            aria-keyshortcuts="P Escape"
+            aria-haspopup="dialog"
+            onClick={onOpenPauseMenu}
+            className="hud-menu p-1.5 rounded bg-[#28221b] text-[#d6c9b4] border border-[#b78e4a]/30 hover:text-[#fff6e8] cursor-pointer shrink-0"
           >
             <HugeIcon icon={Menu01Icon} size={15} aria-hidden="true" />
           </button>
@@ -385,6 +389,9 @@ export const GameHud: React.FC<GameHudProps> = ({
 
       {/* Subtle centered floating feedback if placement invalid */}
       <div className="flex flex-col items-center justify-center pointer-events-none">
+        {saveFeedback && <div className="save-status" role="status">
+          {saveFeedback === 'Error' ? 'Guardado fallido. Puedes exportar tu partida desde el menú de pausa.' : 'Partida guardada'}
+        </div>}
         {placementTooltip && (
           <div className="px-3 py-1 rounded bg-[#1d1511]/95 border border-[#e06c58]/60 text-xs font-medium text-[#ffbfb4] shadow-md">
             {placementTooltip}
@@ -393,10 +400,10 @@ export const GameHud: React.FC<GameHudProps> = ({
       </div>
 
       {/* Bottom Perimeter Build Dock */}
-      <div className="pointer-events-auto self-center w-full max-w-6xl rounded-lg bg-[#191511]/95 border border-[#b78e4a]/35 shadow-xl px-3 py-2">
+      <div className="build-dock pointer-events-auto self-center w-full max-w-6xl rounded-lg bg-[#191511]/95 border border-[#b78e4a]/35 shadow-xl px-3 py-2">
         {/* Row 1: Categories + Action Tools, wrapping instead of scrolling on narrow screens */}
         <div className="flex flex-wrap items-center justify-between gap-x-1.5 gap-y-1.5 pb-1.5 mb-2 border-b border-[#b78e4a]/20">
-          <div className="flex w-full flex-wrap items-center gap-1 xl:w-auto">
+          <div role="group" aria-label="Categorías de construcción" title="Cambiar de categoría (F)" className="flex w-full flex-wrap items-center gap-1 xl:w-auto">
             {BUILD_MENU_GROUPS.map((group) => {
               const active = activeCategory === group.category;
               const activeBuild = active && toolMode.kind === 'build';
@@ -407,13 +414,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                   aria-label={group.label}
                   aria-pressed={active}
                   title={group.label}
-                  onClick={(e) => {
-                    e.currentTarget.blur();
-                    onSelectCategory(group.category);
-                    if (toolMode.kind !== 'build') {
-                      onSelectTool({ kind: 'build', buildingType: group.items[0] });
-                    }
-                  }}
+                  onClick={() => onSelectCategory(group.category)}
                   className={`px-2 py-1 rounded text-xs font-medium transition-colors cursor-pointer whitespace-nowrap shrink-0 flex items-center gap-1.5 border ${
                     activeBuild
                       ? 'bg-[#c9953c] text-[#17120c] font-semibold border-transparent'
@@ -423,7 +424,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                   }`}
                 >
                   <HugeIcon icon={CATEGORY_ICONS[group.category]} size={15} aria-hidden="true" />
-                  <span className="hidden lg:inline">{CATEGORY_SHORT_LABELS[group.category]}</span>
+                  <span>{CATEGORY_SHORT_LABELS[group.category]}</span>
                 </button>
               );
             })}
@@ -435,10 +436,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 type="button"
                 aria-label={`Ascender ${hud.readyUpgradeCount} viviendas listas`}
                 title={`Ascender ${hud.readyUpgradeCount} viviendas listas`}
-                onClick={(e) => {
-                  e.currentTarget.blur();
-                  onUpgradeAll();
-                }}
+                onClick={onUpgradeAll}
                 className="px-2 py-1 rounded text-xs font-semibold bg-[#3a2f19] text-[#f4ca64] border border-[#d4a656]/50 hover:bg-[#4b3c20] flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0"
               >
                 <HugeIcon icon={ArrowUp02Icon} size={15} aria-hidden="true" />
@@ -451,10 +449,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               aria-label={`Autoascenso ${hud.autoUpgradeHouses ? 'activado' : 'desactivado'}`}
               aria-pressed={hud.autoUpgradeHouses}
               title={`Autoascenso de viviendas: ${hud.autoUpgradeHouses ? 'activado' : 'desactivado'}`}
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onToggleAutoUpgrade();
-              }}
+              onClick={onToggleAutoUpgrade}
               className={`p-1.5 rounded border cursor-pointer shrink-0 ${
                 hud.autoUpgradeHouses
                   ? 'bg-[#2a3b26] text-[#a7e09b] border-[#669c5b]/50'
@@ -469,10 +464,8 @@ export const GameHud: React.FC<GameHudProps> = ({
               aria-label="Inspeccionar"
               aria-pressed={toolMode.kind === 'inspect'}
               title="Inspeccionar (Q)"
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onSelectTool({ kind: 'inspect' });
-              }}
+              aria-keyshortcuts="Q"
+              onClick={() => onSelectTool({ kind: 'inspect' })}
               className={`px-1.5 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
                 toolMode.kind === 'inspect'
                   ? 'bg-[#c9953c] text-[#17120c] font-semibold'
@@ -480,17 +473,17 @@ export const GameHud: React.FC<GameHudProps> = ({
               }`}
             >
               <HugeIcon icon={Cursor01Icon} size={15} aria-hidden="true" />
-              <span className="text-[9px] font-mono-num opacity-70">Q</span>
+              <span className="hidden lg:inline">Inspeccionar</span>
+              <kbd className="text-[10px] font-mono-num opacity-80">Q</kbd>
             </button>
 
             <button
               type="button"
               aria-label={`Objetivos: ${objectivesDone} de ${objectivesTotal}`}
-              title={`Objetivos: ${objectivesDone}/${objectivesTotal}`}
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onOpenObjectives();
-              }}
+              title={`Objetivos: ${objectivesDone}/${objectivesTotal} (O)`}
+              aria-keyshortcuts="O"
+              aria-haspopup="dialog"
+              onClick={onOpenObjectives}
               className="px-1.5 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 bg-[#262019] text-[#d6c9b4] hover:bg-[#322a21]"
             >
               <HugeIcon icon={CheckListIcon} size={15} aria-hidden="true" />
@@ -504,10 +497,8 @@ export const GameHud: React.FC<GameHudProps> = ({
               aria-label="Ascender estructura"
               aria-pressed={toolMode.kind === 'upgrade'}
               title="Ascender estructura (U)"
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onSelectTool({ kind: 'upgrade' });
-              }}
+              aria-keyshortcuts="U"
+              onClick={() => onSelectTool({ kind: 'upgrade' })}
               className={`px-1.5 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
                 toolMode.kind === 'upgrade'
                   ? 'bg-[#c9953c] text-[#17120c] font-semibold'
@@ -515,7 +506,8 @@ export const GameHud: React.FC<GameHudProps> = ({
               }`}
             >
               <HugeIcon icon={ArrowUp02Icon} size={15} aria-hidden="true" />
-              <span className="text-[9px] font-mono-num opacity-70">U</span>
+              <span className="hidden lg:inline">Ascender</span>
+              <kbd className="text-[10px] font-mono-num opacity-80">U</kbd>
             </button>
 
             <button
@@ -523,10 +515,8 @@ export const GameHud: React.FC<GameHudProps> = ({
               aria-label="Demoler estructura"
               aria-pressed={toolMode.kind === 'demolish'}
               title="Demoler estructura (X)"
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onSelectTool({ kind: 'demolish' });
-              }}
+              aria-keyshortcuts="X"
+              onClick={() => onSelectTool({ kind: 'demolish' })}
               className={`px-1.5 py-1 rounded text-xs font-medium flex items-center gap-1 cursor-pointer whitespace-nowrap shrink-0 ${
                 toolMode.kind === 'demolish'
                   ? 'bg-[#c64635] text-[#fff6f4] font-semibold'
@@ -534,13 +524,14 @@ export const GameHud: React.FC<GameHudProps> = ({
               }`}
             >
               <HugeIcon icon={Hammer01Icon} size={15} aria-hidden="true" />
-              <span className="text-[9px] font-mono-num opacity-70">X</span>
+              <span className="hidden lg:inline">Demoler</span>
+              <kbd className="text-[10px] font-mono-num opacity-80">X</kbd>
             </button>
           </div>
         </div>
 
         {/* Row 2: Building Selection Buttons */}
-        <div className="flex flex-wrap items-stretch gap-2">
+        <div role="group" aria-label="Construcciones" title="Elegir la siguiente construcción (E)" className="building-list roman-scroll flex items-stretch gap-2">
           {currentGroup.items.map((bType: BuildingType) => {
             const def = BUILDINGS[bType];
             const isSelected =
@@ -554,11 +545,11 @@ export const GameHud: React.FC<GameHudProps> = ({
               <button
                 key={bType}
                 type="button"
-                  onClick={(e) => {
-                  e.currentTarget.blur();
-                  onSelectTool({ kind: 'build', buildingType: bType });
-                }}
+                ref={isSelected ? selectedBuildingButton : undefined}
+                onClick={() => onSelectTool({ kind: 'build', buildingType: bType })}
+                aria-keyshortcuts={def.hotkey}
                 title={`${def.description}${def.hotkey ? ` · Atajo ${def.hotkey}` : ''}`}
+                aria-pressed={isSelected}
                 aria-label={`${def.name}. ${def.description}`}
                 className={`flex items-center gap-2.5 px-3 py-1.5 rounded border text-left transition-colors cursor-pointer shrink-0 ${
                   isSelected
@@ -568,7 +559,10 @@ export const GameHud: React.FC<GameHudProps> = ({
               >
                 <BuildingIcon type={bType} className="w-7 h-7 shrink-0" />
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold whitespace-nowrap">{def.name}</div>
+                  <div className="flex items-baseline justify-between gap-2 text-xs font-semibold whitespace-nowrap">
+                    {def.name}
+                    {def.hotkey && <kbd className="text-[10px] text-[#d8ba84]" aria-hidden="true">{def.hotkey}</kbd>}
+                  </div>
                   <div
                     className="flex items-center gap-1.5 text-[11px] font-mono-num text-[#cbbd9f] whitespace-nowrap"
                     title={`Coste: ${def.costDenarii} denarios, ${def.costWood} madera, ${def.costStone} piedra`}

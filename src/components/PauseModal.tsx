@@ -1,9 +1,11 @@
-import React, { useRef, useState } from 'react';
+import { Modal } from './Modal';
+import React, { useEffect, useRef, useState } from 'react';
 import { Download, Upload } from 'lucide-react';
 import { MAX_SAVE_BYTES } from '../game/persistence';
 
 interface PauseModalProps {
   onResume: () => void;
+  onOpenGuide: () => void;
   onSaveLocal: () => boolean;
   onExportJson: () => void;
   onImportJson: (raw: string) => void;
@@ -13,6 +15,7 @@ interface PauseModalProps {
 
 export const PauseModal: React.FC<PauseModalProps> = ({
   onResume,
+  onOpenGuide,
   onSaveLocal,
   onExportJson,
   onImportJson,
@@ -23,9 +26,14 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const [exitSaveFailed, setExitSaveFailed] = useState(false);
+  const pendingRead = useRef<FileReader | null>(null);
+  useEffect(() => () => pendingRead.current?.abort(), []);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    pendingRead.current?.abort();
     e.target.value = '';
     if (file.size > MAX_SAVE_BYTES) {
       setStatusMsg(null);
@@ -33,6 +41,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
       return;
     }
     const reader = new FileReader();
+    pendingRead.current = reader;
     reader.onerror = () => {
       setStatusMsg(null);
       setErrorMsg('No se pudo leer el archivo.');
@@ -51,11 +60,9 @@ export const PauseModal: React.FC<PauseModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Menú de pausa"
+    <Modal
+        onDismiss={onResume}
+        label="Menú de pausa"
         className="w-full max-w-sm rounded-lg bg-[#191511] border border-[#c9953c]/50 shadow-2xl p-6 text-[#f4ede0]"
       >
         <h2 className="font-display text-2xl font-bold text-[#f4ca64] mb-1">
@@ -65,8 +72,8 @@ export const PauseModal: React.FC<PauseModalProps> = ({
           Gestiona tu partida local o exporta un respaldo en formato JSON.
         </p>
 
-        {statusMsg && <p className="text-xs text-[#89c983] mb-3">{statusMsg}</p>}
-        {errorMsg && <p className="text-xs text-[#f08b78] mb-3">{errorMsg}</p>}
+        {statusMsg && <p role="status" className="text-xs text-[#89c983] mb-3">{statusMsg}</p>}
+        {errorMsg && <p role="alert" className="text-xs text-[#f08b78] mb-3">{errorMsg}</p>}
 
         <div className="space-y-2.5">
           <button
@@ -117,6 +124,17 @@ export const PauseModal: React.FC<PauseModalProps> = ({
             />
           </div>
 
+          <button
+            type="button"
+            title="Cómo jugar y atajos (H)"
+            aria-keyshortcuts="H"
+            aria-haspopup="dialog"
+            onClick={onOpenGuide}
+            className="w-full py-2 px-4 rounded font-medium text-sm text-[#f3eadb] hover:bg-[#332b22] cursor-pointer"
+          >
+            Cómo jugar y atajos
+          </button>
+
           <div className="pt-2 border-t border-[#b78e4a]/20 grid grid-cols-2 gap-2">
             <button
               type="button"
@@ -127,14 +145,24 @@ export const PauseModal: React.FC<PauseModalProps> = ({
             </button>
             <button
               type="button"
-              onClick={onReturnTitle}
+              onClick={() => {
+                if (onSaveLocal()) onReturnTitle();
+                else {
+                  setStatusMsg(null);
+                  setExitSaveFailed(true);
+                  setErrorMsg('No se pudo guardar. Exporta una copia JSON para conservar tu progreso.');
+                }
+              }}
               className="py-2 px-3 rounded font-medium text-xs bg-[#241f19] text-[#d6c9b4] border border-[#b78e4a]/25 hover:bg-[#2f2820] cursor-pointer"
             >
-              Volver al título
+              Guardar y salir
             </button>
+            {exitSaveFailed && (
+              <button type="button" className="col-span-2 text-sm text-[#f4b0a5] py-2 cursor-pointer"
+                onClick={onReturnTitle}>Salir sin guardar</button>
+            )}
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };

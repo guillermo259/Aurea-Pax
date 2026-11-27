@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { BalanceLedgerModal } from './components/BalanceLedgerModal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { GameHud } from './components/GameHud';
+import { GuideModal, type GuideSection } from './components/GuideModal';
 import { InspectorPanel } from './components/InspectorPanel';
 import { ObjectivesModal } from './components/ObjectivesModal';
 import { OutcomeModal } from './components/OutcomeModal';
@@ -9,7 +10,7 @@ import { PauseModal } from './components/PauseModal';
 import { TitleOverlay } from './components/TitleOverlay';
 import { ToastStack } from './components/ToastStack';
 import { romanAudio } from './game/audio';
-import { BUILDINGS, WHEAT_SOW_COST } from './game/catalog';
+import { BUILDINGS, BUILD_MENU_GROUPS, WHEAT_SOW_COST } from './game/catalog';
 import { normalizeDayTime } from './game/dayCycle';
 import {
   CameraState,
@@ -44,6 +45,7 @@ import {
   upgradeAllReadyHouses,
   upgradeHouse,
 } from './game/simulation';
+import { BUILDING_SHORTCUTS, CAMERA_KEYS, SHORTCUTS } from './game/shortcuts';
 import { WeatherParticlePool } from './game/weatherParticles';
 import {
   BuildCategory,
@@ -87,19 +89,6 @@ interface ConfirmRequest {
   onConfirm: () => void;
 }
 
-const HOTKEY_TO_BUILDING: Record<string, { cat: BuildCategory; type: BuildingType }> = {
-  '1': { cat: 'logistics', type: 'road' },
-  '2': { cat: 'logistics', type: 'horreum' },
-  '3': { cat: 'logistics', type: 'market' },
-  '4': { cat: 'civic', type: 'house_liberti' },
-  '5': { cat: 'civic', type: 'fountain' },
-  '6': { cat: 'civic', type: 'temple' },
-  '7': { cat: 'civic', type: 'forum' },
-  '8': { cat: 'food', type: 'wheat_farm' },
-  '9': { cat: 'food', type: 'mill' },
-  '0': { cat: 'food', type: 'bakery' },
-};
-
 export default function App() {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -116,8 +105,10 @@ export default function App() {
   }
 
   const worldRef = useRef<WorldState>(initialWorldRef.current);
-  const phaseRef = useRef<GamePhase>(shouldAutostart() ? 'playing' : 'title');
-  const speedRef = useRef<0 | 1 | 2 | 3>(1);
+  const [phase, setPhase] = useState<GamePhase>(() => shouldAutostart() && !hasLocalSave() ? 'playing' : 'title');
+  const phaseRef = useRef<GamePhase>(phase);
+  const speedRef = useRef<HudSnapshot['speed']>(1);
+  const lastRunningSpeedRef = useRef<1 | 2 | 3>(1);
   const cameraRef = useRef<CameraState>(getInitialCameraForWorld(worldRef.current));
   const toolModeRef = useRef<ToolMode>({ kind: 'build', buildingType: 'road' });
   const hoverTileRef = useRef<{ gx: number; gy: number } | null>(null);
@@ -147,7 +138,7 @@ export default function App() {
     lastPaintedKey: '',
   });
 
-  const [phase, setPhase] = useState<GamePhase>(phaseRef.current);
+  const isTitle = phase === 'title';
   const [activeCategory, setActiveCategory] = useState<BuildCategory>('logistics');
   const [toolMode, setToolMode] = useState<ToolMode>(toolModeRef.current);
   const [ledgerOpen, setLedgerOpen] = useState(false);
@@ -157,11 +148,20 @@ export default function App() {
   }, [ledgerOpen]);
   const [muted, setMuted] = useState(false);
   const [hasSavedGame, setHasSavedGame] = useState<boolean>(() => hasLocalSave());
-  const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+  const [saveFeedback, setSaveFeedback] = useState<'Guardado' | 'Error' | null>(null);
+  useEffect(() => {
+    if (saveFeedback !== 'Guardado') return;
+    const timer = window.setTimeout(() => setSaveFeedback(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [saveFeedback]);
   const [placementTooltip, setPlacementTooltip] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastNotification[]>([]);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   const [objectivesOpen, setObjectivesOpen] = useState(false);
+  const [guideSection, setGuideSection] = useState<GuideSection | null>(null);
+  useEffect(() => {
+    if (ledgerOpen || objectivesOpen || guideSection || confirmRequest) keysPressedRef.current.clear();
+  }, [ledgerOpen, objectivesOpen, guideSection, confirmRequest]);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const reducedMotionRef = useRef(
     typeof window !== 'undefined' &&
@@ -312,6 +312,41 @@ export default function App() {
     romanAudio.playClick();
   }, []);
 
+  const handleSelectCategory = useCallback((category: BuildCategory) => {
+    setActiveCategory(category);
+    const group = BUILD_MENU_GROUPS.find((item) => item.category === category);
+    const tool = toolModeRef.current;
+    if (group && (tool.kind !== 'build' || !group.items.includes(tool.buildingType))) {
+      handleSelectTool({ kind: 'build', buildingType: group.items[0] });
+    } else {
+      romanAudio.playClick();
+    }
+  }, [handleSelectTool]);
+
+  const handleSetSpeed = useCallback((speed: HudSnapshot['speed']) => {
+    speedRef.current = speed;
+    if (speed !== 0) lastRunningSpeedRef.current = speed;
+    romanAudio.playClick();
+    syncHudNow();
+  }, [syncHudNow]);
+
+  const handleToggleLedger = useCallback(() => {
+    setLedgerOpen((open) => !open);
+    romanAudio.playClick();
+  }, []);
+
+  const handleOpenObjectives = useCallback(() => {
+    setLedgerOpen(false);
+    setObjectivesOpen(true);
+    romanAudio.playClick();
+  }, []);
+
+  const handleToggleMute = useCallback(() => setMuted(romanAudio.toggleMute()), []);
+
+  const handleZoomBy = useCallback((factor: number) => {
+    cameraRef.current.zoom = Math.min(2.2, Math.max(0.65, cameraRef.current.zoom * factor));
+  }, []);
+
   const startNewGame = useCallback(() => {
     const seed = Math.floor(Math.random() * 0xffffffff) >>> 0;
     if (typeof window !== 'undefined') {
@@ -325,9 +360,14 @@ export default function App() {
     invalidateTerrainCache();
     cameraRef.current = getInitialCameraForWorld(fresh);
     speedRef.current = 1;
+    lastRunningSpeedRef.current = 1;
     selectedBuildingIdRef.current = null;
     selectedCartIdRef.current = null;
     victorySoundPlayedRef.current = false;
+    setActiveCategory('logistics');
+    toolModeRef.current = { kind: 'build', buildingType: 'road' };
+    setToolMode(toolModeRef.current);
+    setPlacementTooltip(null);
     setLedgerOpen(false);
     setObjectivesOpen(false);
     setConfirmRequest(null);
@@ -345,6 +385,7 @@ export default function App() {
       invalidateTerrainCache();
       cameraRef.current = getInitialCameraForWorld(loaded);
       speedRef.current = 1;
+      lastRunningSpeedRef.current = 1;
       selectedBuildingIdRef.current = null;
       selectedCartIdRef.current = null;
       victorySoundPlayedRef.current = false;
@@ -380,12 +421,11 @@ export default function App() {
     setHasSavedGame(hasLocalSave());
     setSaveFeedback(ok ? 'Guardado' : 'Error');
     romanAudio.playClick();
-    window.setTimeout(() => setSaveFeedback(null), 1600);
   }, []);
 
   const handleExportJson = useCallback(() => {
     const payload = serializeWorld(worldRef.current);
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -405,7 +445,8 @@ export default function App() {
       victorySoundPlayedRef.current = false;
       setSaveNotice(null);
       clearAllToasts();
-      saveWorldToLocal(imported);
+      const saved = saveWorldToLocal(imported);
+      setSaveFeedback(saved ? 'Guardado' : 'Error');
       setHasSavedGame(hasLocalSave());
       applyPhase('playing');
     },
@@ -417,7 +458,7 @@ export default function App() {
     setConfirmRequest({
       title: 'Nueva colonia',
       message:
-        'Se descartará la ciudad actual. Puedes guardarla antes desde el menú de pausa (P).',
+        'El autoguardado de la nueva colonia reemplazará tu partida. Para conservarla, exporta una copia desde el menú de pausa.',
       confirmLabel: 'Empezar de nuevo',
       onConfirm: () => {
         setConfirmRequest(null);
@@ -448,71 +489,132 @@ export default function App() {
     [drainWorldNotifications, syncHudNow],
   );
 
-  // Keyboard shortcuts & camera movement keys
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      const targetIsControl =
-        e.target instanceof HTMLElement &&
-        e.target.closest('button, a, input, textarea, select') !== null;
-      if (targetIsControl && e.key !== 'Escape') return;
-      const key = e.key.toLowerCase();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing || event.altKey) return;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.isContentEditable || target?.closest('input, textarea, select')) return;
 
-      if (phaseRef.current === 'title') {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          startNewGame();
+      const key = event.key.toLowerCase();
+      const currentPhase = phaseRef.current;
+      const modalOpen = document.querySelector('dialog[open]') !== null;
+      if (event.ctrlKey || event.metaKey) {
+        // Let the browser handle its own shortcuts outside the active map.
+        if (key === 's' && currentPhase === 'playing' && !modalOpen && !event.shiftKey) {
+          event.preventDefault();
+          if (!event.repeat) handleSaveNow();
         }
         return;
       }
 
-      if (e.key === 'Escape' || key === 'p') {
-        e.preventDefault();
-        if (confirmRequest) return;
-        if (ledgerOpen) {
-          setLedgerOpen(false);
-          return;
-        }
-        if (objectivesOpen) {
+      if (modalOpen) {
+        if (event.repeat || confirmRequest) return;
+        // Escape is handled by the topmost native dialog.
+        if (guideSection) {
+          if (key === SHORTCUTS.help) setGuideSection(null);
+        } else if (ledgerOpen && key === SHORTCUTS.ledger) {
+          handleToggleLedger();
+        } else if (objectivesOpen && key === SHORTCUTS.objectives) {
           setObjectivesOpen(false);
-          return;
-        }
-        if (phaseRef.current === 'playing') {
-          applyPhase('paused');
-        } else if (phaseRef.current === 'paused') {
-          applyPhase('playing');
+        } else if (currentPhase === 'paused') {
+          if (key === SHORTCUTS.help) setGuideSection('shortcuts');
+          if (key === SHORTCUTS.pauseMenu) applyPhase('playing');
         }
         return;
       }
 
-      if (phaseRef.current !== 'playing') return;
+      if ((key === 'enter' || key === ' ') && target?.closest('button, a')) return;
+      if (key === SHORTCUTS.help && (currentPhase === 'title' || currentPhase === 'playing')) {
+        if (!event.repeat) setGuideSection('shortcuts');
+        return;
+      }
+      if (currentPhase === 'title') {
+        if (key === 'enter' || key === ' ') {
+          event.preventDefault();
+          if (event.repeat) return;
+          if (hasSavedGame) continueSavedGame();
+          else startNewGame();
+        }
+        return;
+      }
+      if (currentPhase !== 'playing') return;
 
-      keysPressedRef.current.add(key);
+      if (CAMERA_KEYS.has(key)) {
+        event.preventDefault();
+        keysPressedRef.current.add(key);
+        return;
+      }
+      if (key === SHORTCUTS.zoomIn || key === '=' || key === SHORTCUTS.zoomOut) {
+        event.preventDefault();
+        handleZoomBy(key === SHORTCUTS.zoomOut ? 1 / 1.12 : 1.12);
+        return;
+      }
+      if (key === SHORTCUTS.pauseSimulation) event.preventDefault();
+      if (event.repeat) return;
 
-      if (key === 'b') {
-        e.preventDefault();
-        setLedgerOpen((prev) => !prev);
-      } else if (key === 'm') {
-        setMuted(romanAudio.toggleMute());
-      } else if (key === 'q') {
-        handleSelectTool({ kind: 'inspect' });
-      } else if (key === 'u') {
-        handleSelectTool({ kind: 'upgrade' });
-      } else if (key === 'x') {
-        handleSelectTool({ kind: 'demolish' });
-      } else if (key === ' ') {
-        e.preventDefault();
-        speedRef.current = speedRef.current === 0 ? 1 : 0;
-        syncHudNow();
-      } else if (HOTKEY_TO_BUILDING[key]) {
-        const entry = HOTKEY_TO_BUILDING[key];
-        setActiveCategory(entry.cat);
-        handleSelectTool({ kind: 'build', buildingType: entry.type });
+      const building = BUILDING_SHORTCUTS.get(key);
+      if (building) {
+        setActiveCategory(building.category);
+        handleSelectTool({ kind: 'build', buildingType: building.type });
+        return;
+      }
+
+      switch (key) {
+        case 'escape':
+        case SHORTCUTS.pauseMenu:
+          applyPhase('paused');
+          break;
+        case SHORTCUTS.pauseSimulation:
+          handleSetSpeed(speedRef.current === 0 ? lastRunningSpeedRef.current : 0);
+          break;
+        case SHORTCUTS.changeSpeed:
+          handleSetSpeed(speedRef.current === 1 ? 2 : speedRef.current === 2 ? 3 : 1);
+          break;
+        case SHORTCUTS.center:
+          cameraRef.current = getInitialCameraForWorld(worldRef.current);
+          hoverTileRef.current = null;
+          setPlacementTooltip(null);
+          break;
+        case SHORTCUTS.save:
+          handleSaveNow();
+          break;
+        case SHORTCUTS.ledger:
+          handleToggleLedger();
+          break;
+        case SHORTCUTS.objectives:
+          handleOpenObjectives();
+          break;
+        case SHORTCUTS.mute:
+          handleToggleMute();
+          break;
+        case SHORTCUTS.inspect:
+          handleSelectTool({ kind: 'inspect' });
+          break;
+        case SHORTCUTS.upgrade:
+          handleSelectTool({ kind: 'upgrade' });
+          break;
+        case SHORTCUTS.demolish:
+          handleSelectTool({ kind: 'demolish' });
+          break;
+        case SHORTCUTS.category: {
+          const currentIndex = BUILD_MENU_GROUPS.findIndex((group) => group.category === activeCategory);
+          const next = BUILD_MENU_GROUPS[(currentIndex + 1) % BUILD_MENU_GROUPS.length];
+          handleSelectCategory(next.category);
+          break;
+        }
+        case SHORTCUTS.building: {
+          const group = BUILD_MENU_GROUPS.find((item) => item.category === activeCategory);
+          if (!group) break;
+          const tool = toolModeRef.current;
+          const currentIndex = tool.kind === 'build' ? group.items.indexOf(tool.buildingType) : -1;
+          handleSelectTool({ kind: 'build', buildingType: group.items[(currentIndex + 1) % group.items.length] });
+          break;
+        }
       }
     };
 
-    const onKeyUp = (e: KeyboardEvent) => {
-      keysPressedRef.current.delete(e.key.toLowerCase());
+    const onKeyUp = (event: KeyboardEvent) => {
+      keysPressedRef.current.delete(event.key.toLowerCase());
     };
 
     const clearHeld = () => {
@@ -532,20 +634,30 @@ export default function App() {
       document.removeEventListener('visibilitychange', clearHeld);
     };
   }, [
+    activeCategory,
     applyPhase,
     confirmRequest,
+    continueSavedGame,
+    guideSection,
+    handleOpenObjectives,
+    handleSaveNow,
+    handleSelectCategory,
     handleSelectTool,
+    handleSetSpeed,
+    handleToggleLedger,
+    handleToggleMute,
+    handleZoomBy,
+    hasSavedGame,
     ledgerOpen,
     objectivesOpen,
     startNewGame,
-    syncHudNow,
   ]);
 
   // Main 60 FPS Canvas mount & simulation loop (mounted once!)
   useEffect(() => {
     const canvas = canvasRef.current;
     const mount = mountRef.current;
-    if (!canvas || !mount) return;
+    if (isTitle || !canvas || !mount) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -601,16 +713,7 @@ export default function App() {
       const world = worldRef.current;
       const currPhase = phaseRef.current;
 
-      if (currPhase === 'title') {
-        // Gentle live camera tour shifted left in camera coords so village frames cleanly on the right 60%
-        const anchor = gridToIso(18.5, 23.5);
-        const tour = reducedMotionRef.current ? 0 : 1;
-        cameraRef.current.x = anchor.x - 165 + Math.sin(timeSec * 0.2) * 55 * tour;
-        cameraRef.current.y = anchor.y + Math.cos(timeSec * 0.17) * 35 * tour;
-        cameraRef.current.zoom = 1.24;
-        stepSimulation(world, dt * 0.8);
-        world.pendingNotifications.length = 0;
-      } else if (currPhase === 'playing') {
+      if (currPhase === 'playing') {
         // Keyboard panning (WASD / Arrow keys)
         const panSpeed = 380 / cameraRef.current.zoom;
         const keys = keysPressedRef.current;
@@ -638,7 +741,8 @@ export default function App() {
         autoSaveAccum += dt;
         if (autoSaveAccum >= 25) {
           autoSaveAccum = 0;
-          saveWorldToLocal(world);
+          const saved = saveWorldToLocal(world);
+          setSaveFeedback(previous => saved ? (previous === 'Error' ? null : previous) : 'Error');
           setHasSavedGame(hasLocalSave());
         }
 
@@ -651,12 +755,8 @@ export default function App() {
 
       const renderStart = performance.now();
       const rect = mount.getBoundingClientRect();
-      const particleDt =
-        currPhase === 'title'
-          ? dt * 0.8
-          : currPhase === 'playing' && speedRef.current > 0
-            ? dt * (0.7 + speedRef.current * 0.3)
-            : 0;
+      const particleDt = currPhase === 'playing' && speedRef.current > 0
+        ? dt * (0.7 + speedRef.current * 0.3) : 0;
       if (!reducedMotionRef.current) {
         weatherParticles.update(
           particleDt,
@@ -704,7 +804,7 @@ export default function App() {
       cancelAnimationFrame(rafId);
       ro.disconnect();
     };
-  }, [applyPhase, syncHudNow]);
+  }, [applyPhase, isTitle, syncHudNow]);
 
   // Persist when the tab is hidden or closed so the last autosave window is not lost.
   useEffect(() => {
@@ -839,7 +939,7 @@ export default function App() {
   );
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (phaseRef.current !== 'playing') return;
+    if (!e.isPrimary || phaseRef.current !== 'playing') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -851,6 +951,8 @@ export default function App() {
     const isRoadOrDemolish =
       (mode.kind === 'build' && mode.buildingType === 'road') || mode.kind === 'demolish';
 
+    canvas.setPointerCapture(e.pointerId);
+    const paintMode = e.button === 0 && isRoadOrDemolish && e.pointerType !== 'touch';
     dragStateRef.current = {
       active: true,
       button: e.button,
@@ -859,18 +961,18 @@ export default function App() {
       lastX: e.clientX,
       lastY: e.clientY,
       moved: false,
-      paintMode: e.button === 0 && isRoadOrDemolish,
+      paintMode,
       lastPaintedKey: '',
     };
 
-    if (e.button === 0 && isRoadOrDemolish) {
+    if (paintMode) {
       dragStateRef.current.lastPaintedKey = `${gx},${gy}`;
       applyTileAction(gx, gy, e.clientX, e.clientY, false);
     }
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (phaseRef.current !== 'playing') return;
+    if (!e.isPrimary || phaseRef.current !== 'playing') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -911,10 +1013,10 @@ export default function App() {
 
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const drag = dragStateRef.current;
-    if (!drag.active) return;
+    if (!e.isPrimary || !drag.active) return;
     drag.active = false;
 
-    if (phaseRef.current !== 'playing') return;
+    if (!e.isPrimary || phaseRef.current !== 'playing') return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -934,8 +1036,7 @@ export default function App() {
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     if (phaseRef.current !== 'playing') return;
-    const factor = e.deltaY < 0 ? 1.12 : 0.89;
-    cameraRef.current.zoom = Math.min(2.2, Math.max(0.65, cameraRef.current.zoom * factor));
+    if (e.deltaY !== 0) handleZoomBy(e.deltaY < 0 ? 1.12 : 1 / 1.12);
   };
 
   const handleUpgradeFromInspector = (id: number) => {
@@ -981,10 +1082,6 @@ export default function App() {
     }
   };
 
-  const handleZoomBy = useCallback((factor: number) => {
-    cameraRef.current.zoom = Math.min(2.2, Math.max(0.65, cameraRef.current.zoom * factor));
-  }, []);
-
   const objectives = getObjectives(worldRef.current);
   const objectivesDone = objectives.filter((o) => o.done).length;
 
@@ -996,11 +1093,14 @@ export default function App() {
           data-testid="game-canvas"
           role="application"
           aria-label="Mapa del asentamiento romano"
-          tabIndex={0}
+          tabIndex={isTitle ? -1 : 0}
+          aria-hidden={isTitle}
           onContextMenu={(e) => e.preventDefault()}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={() => { dragStateRef.current.active = false; }}
+          onLostPointerCapture={() => { dragStateRef.current.active = false; }}
           onPointerLeave={() => {
             dragStateRef.current.active = false;
             hoverTileRef.current = null;
@@ -1014,8 +1114,9 @@ export default function App() {
         <TitleOverlay
           hasSavedGame={hasSavedGame}
           notice={saveNotice}
-          onStartNew={startNewGame}
+          onStartNew={hasSavedGame ? requestNewGame : startNewGame}
           onContinue={continueSavedGame}
+          onOpenGuide={() => setGuideSection('guide')}
         />
       )}
 
@@ -1023,21 +1124,11 @@ export default function App() {
         <GameHud
           hud={hud}
           activeCategory={activeCategory}
-          onSelectCategory={(cat) => {
-            setActiveCategory(cat);
-            romanAudio.playClick();
-          }}
+          onSelectCategory={handleSelectCategory}
           toolMode={toolMode}
           onSelectTool={handleSelectTool}
-          onSetSpeed={(spd) => {
-            speedRef.current = spd;
-            romanAudio.playClick();
-            syncHudNow();
-          }}
-          onToggleLedger={() => {
-            setLedgerOpen((prev) => !prev);
-            romanAudio.playClick();
-          }}
+          onSetSpeed={handleSetSpeed}
+          onToggleLedger={handleToggleLedger}
           onSaveNow={handleSaveNow}
           onOpenPauseMenu={() => applyPhase('paused')}
           onUpgradeAll={() => {
@@ -1053,16 +1144,12 @@ export default function App() {
             syncHudNow();
           }}
           muted={muted}
-          onToggleMute={() => setMuted(romanAudio.toggleMute())}
+          onToggleMute={handleToggleMute}
           saveFeedback={saveFeedback}
           placementTooltip={placementTooltip}
           objectivesDone={objectivesDone}
           objectivesTotal={objectives.length}
-          onOpenObjectives={() => {
-            setLedgerOpen(false);
-            setObjectivesOpen(true);
-            romanAudio.playClick();
-          }}
+          onOpenObjectives={handleOpenObjectives}
           onZoom={handleZoomBy}
         />
       )}
@@ -1130,6 +1217,7 @@ export default function App() {
       {phase === 'paused' && (
         <PauseModal
           onResume={() => applyPhase('playing')}
+          onOpenGuide={() => setGuideSection('shortcuts')}
           onSaveLocal={() => {
             const ok = saveWorldToLocal(worldRef.current);
             setHasSavedGame(hasLocalSave());
@@ -1150,6 +1238,14 @@ export default function App() {
             applyPhase('playing');
           }}
           onRestart={requestNewGame}
+        />
+      )}
+
+      {guideSection && (
+        <GuideModal
+          section={guideSection}
+          onSelectSection={setGuideSection}
+          onClose={() => setGuideSection(null)}
         />
       )}
 

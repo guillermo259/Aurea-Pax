@@ -406,3 +406,6 @@ export const ALERT_LABELS: Record<string, string> = {
   depleted: 'Yacimiento agotado',
   needs_seed: 'Campo en barbecho',
 };
+
+// A full starter map has 42 × 42 tiles. Larger imports use the same entity budget.
+export const MAX_BUILDINGS = 42 * 42;

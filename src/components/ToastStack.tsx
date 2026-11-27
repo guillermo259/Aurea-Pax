@@ -1,6 +1,5 @@
 import React from 'react';
 import { AlertTriangle, Coins, Flame, MapPin, RouteOff, ShieldCheck, X } from 'lucide-react';
-import { AnimatePresence, motion } from 'motion/react';
 import { ToastNotification } from '../game/types';
 
 interface ToastStackProps {
@@ -18,8 +17,7 @@ export const ToastStack: React.FC<ToastStackProps> = ({ toasts, onDismiss, onFoc
       aria-label="Notificaciones críticas"
       className="fixed top-32 left-3 z-20 w-80 max-w-[calc(100vw-1.5rem)] flex flex-col gap-2 pointer-events-none xl:top-16"
     >
-      <AnimatePresence initial={false}>
-        {toasts.map((toast) => {
+      {toasts.map((toast) => {
           const isCritical = toast.severity === 'critical';
           const canFocus = toast.x !== undefined && toast.y !== undefined;
 
@@ -35,15 +33,11 @@ export const ToastStack: React.FC<ToastStackProps> = ({ toasts, onDismiss, onFoc
                     : AlertTriangle;
 
           return (
-            <motion.div
+            <div
               key={toast.id}
               data-testid="toast-item"
               data-toast-kind={toast.kind}
-              initial={{ opacity: 0, x: -16 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -16 }}
-              transition={{ duration: 0.16 }}
-              className={`pointer-events-auto rounded-lg bg-[#191511]/95 border shadow-2xl p-2.5 flex items-start gap-2.5 ${
+              className={`game-toast pointer-events-auto rounded-lg bg-[#191511]/95 border shadow-2xl p-2.5 flex items-start gap-2.5 ${
                 isCritical ? 'border-[#c94432]/75' : 'border-[#d49a3a]/65'
               }`}
             >
@@ -87,10 +81,9 @@ export const ToastStack: React.FC<ToastStackProps> = ({ toasts, onDismiss, onFoc
                   </button>
                 )}
               </div>
-            </motion.div>
+            </div>
           );
         })}
-      </AnimatePresence>
     </div>
   );
 };

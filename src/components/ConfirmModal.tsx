@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import { Modal } from './Modal';
+import React from 'react';
 
 interface ConfirmModalProps {
   title: string;
@@ -17,23 +18,10 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onConfirm,
   onCancel,
 }) => {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onCancel();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onCancel]);
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
+    <Modal
+        onDismiss={onCancel}
+        label={title}
         className="w-full max-w-sm rounded-lg bg-[#191511] border border-[#c9953c]/55 shadow-2xl p-6 text-[#f4ede0]"
       >
         <h2 className="font-display text-xl font-bold text-[#f4ca64] mb-2">{title}</h2>
@@ -59,7 +47,6 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             {confirmLabel}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };

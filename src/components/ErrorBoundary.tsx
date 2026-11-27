@@ -1,4 +1,5 @@
 import React from 'react';
+import { clearLocalSave } from '../game/persistence';
 
 interface ErrorBoundaryState {
   error: Error | null;
@@ -45,12 +46,8 @@ export class ErrorBoundary extends React.Component<
             <button
               type="button"
               onClick={() => {
-                try {
-                  localStorage.removeItem('aurea_pax_save_v1');
-                  localStorage.removeItem('aurea_pax_save_backup_v1');
-                } catch {
-                  // ignore storage errors
-                }
+                if (!window.confirm('¿Borrar la partida y su copia de seguridad de este navegador?')) return;
+                clearLocalSave();
                 window.location.reload();
               }}
               className="flex-1 py-2.5 px-4 rounded font-medium text-sm bg-[#2e231f] text-[#f3d4cc] border border-[#c64635]/35 hover:bg-[#3e2b25] cursor-pointer"

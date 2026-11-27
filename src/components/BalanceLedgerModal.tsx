@@ -1,3 +1,4 @@
+import { Modal } from './Modal';
 import React from 'react';
 import { X } from 'lucide-react';
 import { HudSnapshot } from '../game/types';
@@ -19,11 +20,9 @@ export const BalanceLedgerModal: React.FC<BalanceLedgerModalProps> = ({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/55 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Libro de Cuentas"
+    <Modal
+        onDismiss={onClose}
+        label="Libro de Cuentas"
         className="w-full max-w-3xl max-h-[84vh] flex flex-col rounded-lg bg-[#191511] border border-[#c9953c]/45 shadow-2xl overflow-hidden"
       >
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#b78e4a]/25">
@@ -127,7 +126,6 @@ export const BalanceLedgerModal: React.FC<BalanceLedgerModalProps> = ({
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };

@@ -1,6 +1,5 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import fs from 'fs';
 import path from 'path';
 import {fileURLToPath} from 'node:url';
 import {defineConfig} from 'vite';
@@ -12,22 +11,18 @@ export default defineConfig(() => {
     plugins: [
       react(),
       tailwindcss(),
-      // Copies src/assets into dist/ so root-relative URLs like
-      // "/src/assets/images/..." (e.g. generate_image output) still resolve
-      // in production builds. Do not remove.
       {
-        name: 'copy-unbundled-src-assets',
+        name: 'production-content-policy',
         apply: 'build',
-        closeBundle(error?: Error): void {
-          if (error) {
-            return;
-          }
-          const distDir = path.resolve(projectRoot, 'dist');
-          const srcAssets = path.resolve(projectRoot, 'src/assets');
-          const distAssets = path.resolve(distDir, 'src/assets');
-          if (fs.existsSync(distDir) && fs.existsSync(srcAssets)) {
-            fs.cpSync(srcAssets, distAssets, {recursive: true, force: true});
-          }
+        transformIndexHtml() {
+          return [{
+            tag: 'meta',
+            attrs: {
+              'http-equiv': 'Content-Security-Policy',
+              content: "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+            },
+            injectTo: 'head-prepend',
+          }];
         },
       },
     ],

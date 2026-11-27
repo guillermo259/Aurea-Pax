@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import { Modal } from './Modal';
+import React from 'react';
 import { CheckCircle2, Circle, X } from 'lucide-react';
 import { getObjectives } from '../game/objectives';
 import { WorldState } from '../game/types';
@@ -9,27 +10,14 @@ interface ObjectivesModalProps {
 }
 
 export const ObjectivesModal: React.FC<ObjectivesModalProps> = ({ world, onClose }) => {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   const objectives = getObjectives(world);
   const done = objectives.filter((o) => o.done).length;
   const percent = Math.round((done / objectives.length) * 100);
 
   return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/55 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Objetivos del asentamiento"
+    <Modal
+        onDismiss={onClose}
+        label="Objetivos del asentamiento"
         className="w-full max-w-lg max-h-[84vh] flex flex-col rounded-lg bg-[#191511] border border-[#c9953c]/45 shadow-2xl overflow-hidden"
       >
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#b78e4a]/25">
@@ -53,9 +41,7 @@ export const ObjectivesModal: React.FC<ObjectivesModalProps> = ({ world, onClose
         </div>
 
         <div className="px-5 pt-3">
-          <div className="w-full h-1.5 rounded bg-[#2d261e] overflow-hidden">
-            <div className="h-full bg-[#d4a656]" style={{ width: `${percent}%` }} />
-          </div>
+          <progress className="roman-progress" aria-label="Objetivos completados" max={100} value={percent} />
         </div>
 
         <ul className="p-5 overflow-y-auto roman-scroll space-y-2.5">
@@ -86,7 +72,6 @@ export const ObjectivesModal: React.FC<ObjectivesModalProps> = ({ world, onClose
             </li>
           ))}
         </ul>
-      </div>
-    </div>
+    </Modal>
   );
 };

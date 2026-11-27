@@ -1,3 +1,4 @@
+import { Modal } from './Modal';
 import React from 'react';
 import { HudSnapshot } from '../game/types';
 
@@ -18,11 +19,8 @@ export const OutcomeModal: React.FC<OutcomeModalProps> = ({
   const timeLabel = `${minutes}m ${String(seconds).padStart(2, '0')}s`;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/65 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={isVictory ? 'Victoria del Senado' : 'Bancarrota'}
+    <Modal
+        label={isVictory ? 'Victoria del Senado' : 'Bancarrota'}
         className="w-full max-w-md rounded-lg bg-[#191511] border border-[#c9953c]/60 shadow-2xl p-6 text-[#f4ede0]"
       >
         <h2 className="font-display text-2xl font-bold text-[#f4ca64] mb-1">
@@ -82,7 +80,6 @@ export const OutcomeModal: React.FC<OutcomeModalProps> = ({
             {isVictory ? 'Nueva partida' : 'Intentar de nuevo'}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 };

@@ -447,6 +447,16 @@ test('imported saves are validated: corrupted or hostile JSON is rejected or san
   oversized.world.height = 100000;
   assert.throws(() => deserializeWorld(JSON.stringify(oversized)), /inválid|incompatible/i);
 
+  assert.throws(() => deserializeWorld(JSON.stringify({ ...payload, version: 1.5 })), /incompatible/i);
+  const unsafeId = structuredClone(payload);
+  unsafeId.world.buildings[0].id = Number.MAX_SAFE_INTEGER;
+  const withSafeIds = deserializeWorld(JSON.stringify(unsafeId));
+  assert.ok(Number.isSafeInteger(withSafeIds.nextBuildingId));
+  assert.ok(withSafeIds.nextBuildingId > Math.max(...withSafeIds.buildings.map(b => b.id)));
+
+  const excessCitizens = { ...payload.world, citizens: Array(19).fill(null) };
+  assert.throws(() => deserializeWorld(JSON.stringify({ ...payload, world: excessCitizens })), /incompatible/i);
+
   // Tile array must match the declared dimensions
   const truncated = JSON.parse(JSON.stringify(payload));
   truncated.world.tiles = truncated.world.tiles.slice(0, 10);
@@ -767,6 +777,14 @@ test('autosave backup recovers the previous save when the primary copy is corrup
       assert.equal(result.recovered, true);
       assert.equal(Math.round(result.world.denarii), 777);
     }
+
+    const backup = store.get('aurea_pax_save_backup_v1');
+    store.set('aurea_pax_save_v1', '{}');
+    assert.equal(saveWorldToLocal(second), true);
+    assert.equal(store.get('aurea_pax_save_backup_v1'), backup);
+    store.delete('aurea_pax_save_v1');
+    assert.equal(hasLocalSave(), true);
+    assert.equal(loadSavedGame().status, 'ok');
 
     clearLocalSave();
     assert.equal(loadSavedGame().status, 'none');
