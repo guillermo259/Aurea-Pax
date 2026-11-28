@@ -1162,44 +1162,44 @@ export default function App() {
           objectivesTotal={objectives.length}
           onOpenObjectives={handleOpenObjectives}
           onZoom={handleZoomBy}
-        />
-      )}
+        >
+          {phase === 'playing' && !ledgerOpen && !objectivesOpen && (
+            <>
+              <ToastStack
+                toasts={toasts}
+                onDismiss={dismissToast}
+                onFocus={(toast) => {
+                  if (toast.x !== undefined && toast.y !== undefined) {
+                    const iso = gridToIso(toast.x, toast.y);
+                    cameraRef.current.x = iso.x;
+                    cameraRef.current.y = iso.y;
+                    if (toast.buildingId !== undefined) {
+                      selectedBuildingIdRef.current = toast.buildingId;
+                      selectedCartIdRef.current = null;
+                      syncHudNow();
+                    }
+                  }
+                }}
+              />
 
-      {phase === 'playing' && !ledgerOpen && !objectivesOpen && (
-        <ToastStack
-          toasts={toasts}
-          onDismiss={dismissToast}
-          onFocus={(toast) => {
-            if (toast.x !== undefined && toast.y !== undefined) {
-              const iso = gridToIso(toast.x, toast.y);
-              cameraRef.current.x = iso.x;
-              cameraRef.current.y = iso.y;
-              if (toast.buildingId !== undefined) {
-                selectedBuildingIdRef.current = toast.buildingId;
-                selectedCartIdRef.current = null;
-                syncHudNow();
-              }
-            }
-          }}
-        />
-      )}
-
-      {phase === 'playing' && !ledgerOpen && !objectivesOpen && (
-        <InspectorPanel
-          hud={hud}
-          building={hud.selectedBuilding}
-          cart={hud.selectedCart}
-          allBuildings={worldRef.current.buildings}
-          onClose={() => {
-            selectedBuildingIdRef.current = null;
-            selectedCartIdRef.current = null;
-            syncHudNow();
-          }}
-          onUpgradeBuilding={handleUpgradeFromInspector}
-          onExtinguishFire={handleExtinguishFromInspector}
-          onSowWheat={handleSowFromInspector}
-          onDemolishBuilding={requestDemolish}
-        />
+              <InspectorPanel
+                hud={hud}
+                building={hud.selectedBuilding}
+                cart={hud.selectedCart}
+                allBuildings={worldRef.current.buildings}
+                onClose={() => {
+                  selectedBuildingIdRef.current = null;
+                  selectedCartIdRef.current = null;
+                  syncHudNow();
+                }}
+                onUpgradeBuilding={handleUpgradeFromInspector}
+                onExtinguishFire={handleExtinguishFromInspector}
+                onSowWheat={handleSowFromInspector}
+                onDemolishBuilding={requestDemolish}
+              />
+            </>
+          )}
+        </GameHud>
       )}
 
       {phase === 'playing' && (

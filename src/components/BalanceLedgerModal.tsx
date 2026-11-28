@@ -23,9 +23,9 @@ export const BalanceLedgerModal: React.FC<BalanceLedgerModalProps> = ({
     <Modal
         onDismiss={onClose}
         label="Libro de Cuentas"
-        className="w-full max-w-3xl max-h-[84vh] flex flex-col rounded-lg bg-[#191511] border border-[#c9953c]/45 shadow-2xl overflow-hidden"
+        className="ledger-modal w-full max-w-3xl max-h-[84vh] flex flex-col rounded-lg bg-[#191511] border border-[#c9953c]/45 shadow-2xl overflow-hidden"
       >
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#b78e4a]/25">
+        <div className="ledger-head flex items-center justify-between gap-2 px-5 py-3.5 border-b border-[#b78e4a]/25">
           <div>
             <h2 className="font-display text-lg font-bold text-[#f4ca64]">
               Libro de Cuentas Imperial
@@ -46,21 +46,21 @@ export const BalanceLedgerModal: React.FC<BalanceLedgerModalProps> = ({
           </button>
         </div>
 
-        <div className="p-5 overflow-y-auto roman-scroll space-y-6">
+        <div className="ledger-body p-5 min-h-0 overflow-y-auto roman-scroll space-y-6">
           {/* Production vs Demand table */}
           <div>
             <h3 className="text-xs uppercase tracking-wider text-[#d4a656] font-semibold mb-2.5">
               Producción y Demanda por Minuto
             </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
+            <div className="roman-scroll overflow-x-auto">
+              <table className="ledger-table w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="border-b border-[#b78e4a]/25 text-[#b9aa94]">
                     <th className="py-2 pr-4 font-medium">Recurso</th>
-                    <th className="py-2 px-3 font-medium text-right">Horreum</th>
-                    <th className="py-2 px-3 font-medium text-right">Prod / min</th>
-                    <th className="py-2 px-3 font-medium text-right">Consumo / min</th>
-                    <th className="py-2 pl-3 font-medium text-right">Balance</th>
+                    <th className="py-2 px-3 font-medium text-right">Stock</th>
+                    <th className="py-2 px-3 font-medium text-right" aria-label="Producción por minuto">Prod.</th>
+                    <th className="py-2 px-3 font-medium text-right" aria-label="Consumo por minuto">Consumo</th>
+                    <th className="py-2 pl-3 font-medium text-right">Neto</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#b78e4a]/15">

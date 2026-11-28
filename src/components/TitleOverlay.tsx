@@ -78,7 +78,7 @@ export function TitleOverlay({ hasSavedGame, notice, initialSeed, onStartNew, on
         <div className="seed-picker">
           <div className="seed-picker-fields">
             <label htmlFor="world-seed">Semilla del mundo</label>
-            <p id="seed-help">Cada semilla cambia el relieve, la costa y los lagos, manteniendo un inicio justo.</p>
+            <p id="seed-help">Cambia la semilla para explorar otro mapa.</p>
             <div className="seed-picker-controls">
               <input
                 id="world-seed"
@@ -96,7 +96,7 @@ export function TitleOverlay({ hasSavedGame, notice, initialSeed, onStartNew, on
                 <Dices size={16} /> Aleatoria
               </button>
             </div>
-            <div id="seed-status" className="seed-status" aria-live="polite">
+            <div id="seed-status" className={numericSeed === null ? 'seed-status' : 'sr-only'} aria-live="polite">
               {numericSeed === null ? 'Usa un número entre 0 y 4 294 967 295.' : `Mapa ${numericSeed} · vista previa actualizada`}
             </div>
           </div>
@@ -104,7 +104,7 @@ export function TitleOverlay({ hasSavedGame, notice, initialSeed, onStartNew, on
             <svg viewBox="0 0 42 42" role="img" aria-label={numericSeed === null ? 'Vista previa del mapa no disponible' : `Vista previa del mapa con semilla ${numericSeed}`}>
               {previewTiles}
             </svg>
-            <figcaption>Vista del mapa</figcaption>
+            <figcaption>Vista previa</figcaption>
           </figure>
         </div>
         <div className="title-actions">

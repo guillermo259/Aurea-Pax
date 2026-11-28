@@ -15,7 +15,7 @@ export const ToastStack: React.FC<ToastStackProps> = ({ toasts, onDismiss, onFoc
     <div
       aria-live="polite"
       aria-label="Notificaciones críticas"
-      className="fixed top-32 left-3 z-20 w-80 max-w-[calc(100vw-1.5rem)] flex flex-col gap-2 pointer-events-none xl:top-16"
+      className="toast-stack fixed top-32 left-3 z-20 w-80 max-w-[calc(100vw-1.5rem)] flex flex-col gap-2 pointer-events-none xl:top-16"
     >
       {toasts.map((toast) => {
           const isCritical = toast.severity === 'critical';
