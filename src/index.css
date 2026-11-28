@@ -239,11 +239,18 @@
   .seed-random { flex: 0 0 auto; }
   .title-actions { margin-top: 1rem; }
   .title-controls { gap: .8rem 1.2rem; flex-wrap: wrap; }
-  .hud-bar { padding: .4rem .5rem; }
-  .game-hud { padding: .4rem; }
-  .game-hud button { min-height: 2rem; min-width: 2rem; }
-  .build-dock { padding: .35rem .45rem; }
-  .inspector { top: 6.75rem; }
+  .hud-bar { padding: .5rem .65rem; }
+  .game-hud { padding: .5rem; }
+  .build-dock { padding: .5rem .55rem; }
+  .hud-controls { justify-content: center; }
+  .hud-utilities { margin-left: 0; }
+  .inspector { top: 12.5rem; }
+}
+@media (max-width: 760px), (pointer: coarse) {
+  .game-hud button { min-height: 2.75rem; min-width: 2.75rem; }
+}
+@media (pointer: coarse) and (min-width: 761px) {
+  .inspector { top: 7.5rem; }
 }
 @media (pointer: coarse) {
   .title-controls .desktop-hint { display: none; }
@@ -273,7 +280,7 @@
 .roman-progress::-moz-progress-bar { background: #d4a656; }
 @media (max-width: 760px) {
   .hud-bar { position: relative; }
-  .hud-summary { min-height: 2rem; padding-right: 2.5rem; }
+  .hud-summary { min-height: 2.75rem; padding-right: 3rem; }
   .hud-menu { position: absolute; right: .5rem; top: .4rem; }
 }
 
